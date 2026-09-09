@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#000108" />
+    <meta name="description" content="RE-ENTRY — huge space, four planet caverns, and an 8-bit dive." />
+    <title>RE-ENTRY</title>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="game" aria-label="RE-ENTRY game field"></canvas>
+      <div id="vignette" aria-hidden="true"></div>
+
+      <header id="hud" hidden>
+        <div class="hud-cluster">
+          <div class="stat">
+            <span>Score</span>
+            <strong id="score">0</strong>
+          </div>
+          <div class="stat">
+            <span>Sector</span>
+            <strong id="wave">SPACE</strong>
+          </div>
+          <div class="stat">
+            <span>Credits</span>
+            <strong id="credits">0</strong>
+          </div>
+        </div>
+        <div class="hud-cluster hud-cluster-end">
+          <div id="loadout" class="loadout" hidden></div>
+          <div class="stat">
+            <span>Best</span>
+            <strong id="best">0</strong>
+          </div>
+          <div id="lives" aria-label="Lives remaining"></div>
+        </div>
+      </header>
+
+      <div id="combo" hidden>x2</div>
+      <div id="prompt" hidden></div>
+      <div id="fuel-wrap" hidden>
+        <span>Fuel</span>
+        <div class="fuel-track"><i id="fuel-bar"></i></div>
+      </div>
+
+      <div id="overlay">
+        <section class="panel" data-screen="menu">
+          <p class="kicker">8-bit arcade</p>
+          <h1>RE-ENTRY</h1>
+          <p class="lede">
+            Open space is huge. Fly to Cinder, Rime, Mycel, or Vesper and press
+            E — the craft hits atmosphere in an 8-bit re-entry, then you fly the
+            caverns. Launch back out the shaft when you want the sky again.
+          </p>
+          <ul class="controls">
+            <li><kbd>A</kbd> <kbd>D</kbd> turn · <kbd>W</kbd> thrust forward · <kbd>S</kbd> reverse</li>
+            <li><kbd>Space</kbd> / click — shoot. Click a nearby planet to dive.</li>
+            <li><kbd>E</kbd> — re-enter when the prompt lights up, or launch from a shaft</li>
+            <li>Scroll to zoom in and out. Radar shows the rest of the map.</li>
+            <li><kbd>Esc</kbd> — pause</li>
+          </ul>
+          <button type="button" id="play" class="btn">Begin re-entry</button>
+        </section>
+
+        <section class="panel" data-screen="pause" hidden>
+          <p class="kicker">Holds</p>
+          <h1>Paused</h1>
+          <p class="lede">The field is still out there.</p>
+          <button type="button" id="resume" class="btn">Resume</button>
+        </section>
+
+        <section class="panel" data-screen="over" hidden>
+          <p class="kicker">Ship lost</p>
+          <h1>Game over</h1>
+          <p class="lede" id="final-line">The field closed in.</p>
+          <p class="scoreline"><span>Final score</span><strong id="final-score">0</strong></p>
+          <p class="scoreline"><span>Credits banked</span><strong id="final-credits">0</strong></p>
+          <button type="button" id="retry" class="btn">Try again</button>
+        </section>
+
+        <section class="panel" data-screen="error" hidden>
+          <p class="kicker">Signal lost</p>
+          <h1>Can't draw the field</h1>
+          <p class="lede">This browser has no 2D canvas. Try another window or device.</p>
+        </section>
+      </div>
+
+      <button type="button" id="fire" class="fire-btn" hidden aria-label="Fire">Fire</button>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
