@@ -16,6 +16,15 @@ export function setMuted(value: boolean): void {
   muted = value;
 }
 
+export function toggleMuted(): boolean {
+  muted = !muted;
+  return muted;
+}
+
+export function isMuted(): boolean {
+  return muted;
+}
+
 function beep(
   freq: number,
   duration: number,
@@ -66,6 +75,24 @@ export function sfxWave(): void {
 
 export function sfxOver(): void {
   beep(220, 0.45, "sawtooth", 0.07, 70);
+}
+
+export function sfxRescue(): void {
+  beep(180, 0.16, "triangle", 0.05, 520);
+  beep(320, 0.28, "square", 0.04, 880);
+}
+
+export function sfxKey(): void {
+  beep(392, 0.12, "square", 0.05, 784);
+  beep(523, 0.18, "triangle", 0.045, 1046);
+}
+
+export function sfxShield(): void {
+  beep(640, 0.08, "sine", 0.03, 420);
+}
+
+export function sfxBossHit(): void {
+  beep(160, 0.16, "sawtooth", 0.06, 70);
 }
 
 export function sfxReentry(): void {

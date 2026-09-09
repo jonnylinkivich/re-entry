@@ -210,6 +210,103 @@ export class ReentryCine {
   }
 }
 
+export class RescueCine {
+  done = false;
+  private time = 0;
+  private buf: HTMLCanvasElement;
+  private gfx: CanvasRenderingContext2D;
+  private sparks: Ember[] = [];
+  private rate: number;
+
+  constructor(salvageRate: number) {
+    this.rate = salvageRate;
+    this.buf = document.createElement("canvas");
+    this.buf.width = PW;
+    this.buf.height = PH;
+    const gfx = this.buf.getContext("2d");
+    if (!gfx) throw new Error("RE-ENTRY rescue cinematic failed to allocate a buffer.");
+    this.gfx = gfx;
+  }
+
+  skip(): void {
+    this.done = true;
+  }
+
+  update(dt: number): void {
+    this.time += dt;
+    if (this.time >= 2.35) this.done = true;
+    for (let i = 0; i < 4; i++) {
+      this.sparks.push({
+        x: 72 + Math.random() * 16,
+        y: 88,
+        vx: (Math.random() - 0.5) * 10,
+        vy: -40 - Math.random() * 50,
+        life: 0.3 + Math.random() * 0.35,
+        color: Math.random() < 0.5 ? "#7ee7ff" : "#ffe56b",
+      });
+    }
+    const next: Ember[] = [];
+    for (const e of this.sparks) {
+      e.life -= dt;
+      e.x += e.vx * dt;
+      e.y += e.vy * dt;
+      if (e.life > 0) next.push(e);
+    }
+    this.sparks = next;
+  }
+
+  draw(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+    this.render();
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, w, h);
+    const scale = Math.max(1, Math.floor(Math.min(w / PW, h / PH)));
+    const dw = PW * scale;
+    const dh = PH * scale;
+    const ox = Math.floor((w - dw) / 2);
+    const oy = Math.floor((h - dh) / 2);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(this.buf, 0, 0, PW, PH, ox, oy, dw, dh);
+    ctx.imageSmoothingEnabled = true;
+  }
+
+  private shipY(): number {
+    return 62 - this.time * 22;
+  }
+
+  private render(): void {
+    const g = this.gfx;
+    const t = this.time;
+    g.fillStyle = "#05080e";
+    g.fillRect(0, 0, PW, PH);
+    g.fillStyle = "rgba(126, 231, 255, 0.12)";
+    g.fillRect(70, 0, 20, PH);
+    g.fillStyle = "rgba(255, 229, 107, 0.18)";
+    g.fillRect(74, 0, 12, PH);
+
+    for (const e of this.sparks) {
+      g.globalAlpha = Math.max(0, e.life * 3);
+      g.fillStyle = e.color;
+      g.fillRect(e.x | 0, e.y | 0, 2, 2);
+    }
+    g.globalAlpha = 1;
+
+    const oy = Math.round(this.shipY());
+    g.fillStyle = "#7ee7ff";
+    g.fillRect(78, oy, 5, 8);
+    g.fillRect(76, oy + 3, 9, 3);
+
+    g.fillStyle = "#ffe56b";
+    blitText(g, "RESCUE BEAM", 46, 6, 1);
+    g.fillStyle = "#ffffff";
+    const haul = this.rate >= 1 ? "FULL CARGO" : this.rate >= 0.75 ? "MOST CARGO" : "HALF CARGO";
+    blitText(g, haul, 80 - haul.length * 2, 14, 1);
+    if (t < 1.8) {
+      g.fillStyle = "#9aa3b8";
+      blitText(g, "PRESS  E  TO SKIP", 44, 82, 1);
+    }
+  }
+}
+
 function blitText(g: CanvasRenderingContext2D, text: string, x: number, y: number, scale: number): void {
   let cx = x;
   for (const raw of text) {

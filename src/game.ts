@@ -1,13 +1,20 @@
 import {
   sfxBoom,
+  sfxBossHit,
   sfxHit,
+  sfxKey,
   sfxOver,
   sfxPickup,
   sfxReentry,
+  sfxRescue,
+  sfxShield,
   sfxShoot,
   sfxThrust,
   sfxWave,
+  setMuted,
+  toggleMuted,
 } from "./audio.ts";
+import { BOSS_BY_PLANET, PlanetBoss } from "./boss.ts";
 import {
   PLANETS,
   SPACE_H,
@@ -21,7 +28,24 @@ import {
   inExitShaft,
   moveAgainst,
 } from "./cavern.ts";
-import { ReentryCine } from "./cinematic.ts";
+import { ReentryCine, RescueCine } from "./cinematic.ts";
+import {
+  ENERGY_DRAIN,
+  ENERGY_HIT,
+  FUEL_IDLE,
+  FUEL_THRUST,
+  RESCUE_FEE,
+  gateObjective,
+  loadMeta,
+  lockPrompt,
+  neededKey,
+  planetUnlocked,
+  playtestFlags,
+  salvageLabel,
+  saveMeta,
+  titleKey,
+  type MetaState,
+} from "./meta.ts";
 
 export type Mode = "menu" | "play" | "pause" | "over" | "cine";
 export type Zone = "space" | "cavern";
@@ -41,6 +65,14 @@ export type HudSnapshot = {
   loadout: string[];
   sector: string;
   fuel: number;
+  maxFuel: number;
+  energy: number;
+  maxEnergy: number;
+  cargo: number;
+  salvageRate: number;
+  objective: string;
+  shielding: boolean;
+  muted: boolean;
   zone: Zone;
   prompt: string;
 };
@@ -55,7 +87,7 @@ type Ship = {
   invuln: number;
   thrusting: boolean;
   reversing: boolean;
-  shield: number;
+  shielding: boolean;
 };
 
 type Gear = {
@@ -97,7 +129,12 @@ type Spark = {
   color: string;
 };
 
-type LootKind = "credits" | "shield" | "rapid" | "twin" | "spread" | "pet" | "fuel";
+type LootKind = "credits" | "ore" | "energy" | "rapid" | "twin" | "spread" | "pet" | "fuel";
+
+type DiveHold = {
+  rocks: Rock[];
+  pickups: Pickup[];
+};
 
 type Pickup = {
   x: number;
@@ -146,8 +183,6 @@ type SpaceHold = {
 const MAX_LIVES = 3;
 const SHIP_R = 12;
 const PET_R = 8;
-const HIGH_KEY = "drift-highscore";
-const CREDIT_KEY = "drift-credits";
 const TURN = 4.8;
 const THRUST = 360;
 const MAX_SPEED_SPACE = 880;
@@ -157,7 +192,6 @@ const BULLET_LIFE = 1.05;
 const MAX_PETS = 2;
 const MAX_ROCKS = 40;
 const MAX_SPARKS = 64;
-const FUEL_MAX = 100;
 const ZOOM_MIN = 0.08;
 const ZOOM_MAX = 3.6;
 const REENTRY_RANGE = 2600;
@@ -296,18 +330,31 @@ export class Game {
   private camY = 0;
   private zoom = 1;
   private zoomWanted = 1;
-  private fuel = FUEL_MAX;
+  private fuel = 0;
+  private energy = 0;
+  private diveCargo = 0;
   private prompt = "";
   private planet: PlanetDef | null = null;
   private cavern: Cavern | null = null;
   private caverns = new Map<string, Cavern>();
+  private diveHolds = new Map<string, DiveHold>();
+  private bosses = new Map<string, PlanetBoss | "cleared">();
+  private boss: PlanetBoss | null = null;
   private spaceHold: SpaceHold | null = null;
-  private cine: ReentryCine | null = null;
+  private cine: ReentryCine | RescueCine | null = null;
+  private cineKind: "reentry" | "rescue" | null = null;
   private pendingPlanet: PlanetDef | null = null;
+  private meta: MetaState;
+  private runBoost = false;
+  private runUnlock = false;
 
   constructor() {
-    this.high = readHigh();
-    this.credits = readCredits();
+    this.meta = loadMeta();
+    setMuted(this.meta.muted);
+    this.credits = this.meta.credits;
+    this.high = this.meta.high;
+    this.fuel = this.meta.maxFuel;
+    this.energy = this.meta.maxEnergy;
     this.ship = this.freshShip(SPACE_W * 0.5, SPACE_H * 0.5);
     this.snapCam();
     this.rebuildStars();
@@ -338,6 +385,12 @@ export class Game {
     if (code === "KeyE") {
       if (this.mode === "cine") this.skipCine();
       else if (this.mode === "play") this.tryTransit();
+    }
+    if (code === "KeyR" && this.mode === "play") this.tryRescue();
+    if (code === "KeyM") {
+      this.meta.muted = toggleMuted();
+      saveMeta(this.meta);
+      this.announce(this.meta.muted ? "MUTED" : "SOUND ON");
     }
     if (code === "Space" && this.mode === "cine") this.skipCine();
     if (code === "Escape" || code === "KeyP") {
@@ -388,6 +441,7 @@ export class Game {
     this.cavern = null;
     this.spaceHold = null;
     this.cine = null;
+    this.cineKind = null;
     this.pendingPlanet = null;
     this.score = 0;
     this.lives = MAX_LIVES;
@@ -395,7 +449,7 @@ export class Game {
     this.combo = 1;
     this.comboLife = 0;
     this.runCredits = 0;
-    this.fuel = FUEL_MAX;
+    this.diveCargo = 0;
     this.prompt = "";
     this.gear = { rapid: false, twin: false, spread: false };
     this.bullets = [];
@@ -403,6 +457,20 @@ export class Game {
     this.pickups = [];
     this.pets = [];
     this.floaters = [];
+    this.caverns = new Map();
+    this.diveHolds = new Map();
+    this.bosses = new Map();
+    this.boss = null;
+    const flags = playtestFlags();
+    this.runBoost = flags.boost;
+    this.runUnlock = flags.unlock;
+    if (this.runBoost) {
+      this.meta.credits = Math.max(this.meta.credits, 40);
+      saveMeta(this.meta);
+    }
+    this.credits = this.meta.credits;
+    this.fuel = this.runBoost ? Math.max(this.meta.maxFuel, 120) : this.meta.maxFuel;
+    this.energy = this.runBoost ? Math.max(this.meta.maxEnergy, 80) : this.meta.maxEnergy;
     const home = PLANETS[0];
     this.ship = this.freshShip(home.x + home.radius + 880, home.y);
     this.ship.angle = Math.PI;
@@ -443,6 +511,14 @@ export class Game {
       loadout: this.loadoutLabels(),
       sector: this.planet ? this.planet.name.toUpperCase() : `SPACE · W${this.wave}`,
       fuel: this.fuel,
+      maxFuel: this.tankMax(),
+      energy: this.energy,
+      maxEnergy: this.energyMax(),
+      cargo: this.diveCargo,
+      salvageRate: this.meta.salvageRate,
+      objective: this.objectiveText(),
+      shielding: this.ship.shielding,
+      muted: this.meta.muted,
       zone: this.zone,
       prompt: this.prompt,
     };
@@ -489,6 +565,7 @@ export class Game {
       this.combo = 1;
       this.markHud();
     }
+    this.stepBoss(t);
     this.collide();
     this.updatePrompt();
     if (this.zone === "space") this.checkWave();
@@ -533,6 +610,7 @@ export class Game {
       if (this.inView(bullet.x, bullet.y, 10)) this.drawBullet(ctx, bullet);
     }
     for (const pet of this.pets) this.drawPet(ctx, pet);
+    if (this.boss?.alive) this.boss.draw(ctx, this.zoom);
     if (this.mode !== "menu") this.drawShip(ctx);
     for (const floater of this.floaters) {
       if (this.inView(floater.x, floater.y, 40)) this.drawFloater(ctx, floater);
@@ -542,7 +620,6 @@ export class Game {
     ctx.restore();
     this.drawBanner(ctx);
     this.drawNavMarker(ctx);
-    this.drawReentryHint(ctx);
     if (this.mode !== "menu") this.drawMinimap(ctx);
   }
 
@@ -564,10 +641,29 @@ export class Game {
     if (this.gear.twin) tags.push("Twin");
     if (this.gear.spread) tags.push("Spread");
     if (this.gear.rapid) tags.push("Rapid");
-    if (this.ship.shield > 0) tags.push("Shield");
+    if (this.ship.shielding) tags.push("Shield");
     if (this.pets.length === 1) tags.push("Pet");
     if (this.pets.length > 1) tags.push(`${this.pets.length} Pets`);
+    tags.push(`Tank ${Math.round(this.tankMax())}`);
+    tags.push(salvageLabel(this.meta.salvageRate));
+    for (const key of this.ownedKeys()) {
+      if (key === "vesper") tags.push("Vesper Clear");
+      else tags.push(titleKey(key));
+    }
     return tags;
+  }
+
+  private tankMax(): number {
+    return this.runBoost ? Math.max(this.meta.maxFuel, 120) : this.meta.maxFuel;
+  }
+
+  private energyMax(): number {
+    return this.runBoost ? Math.max(this.meta.maxEnergy, 80) : this.meta.maxEnergy;
+  }
+
+  private ownedKeys(): string[] {
+    if (this.runUnlock) return ["cinder", "rime", "mycel", "vesper"];
+    return this.meta.keys;
   }
 
   private freshShip(x: number, y: number): Ship {
@@ -581,7 +677,7 @@ export class Game {
       invuln: 2,
       thrusting: false,
       reversing: false,
-      shield: 0,
+      shielding: false,
     };
   }
 
@@ -698,14 +794,40 @@ export class Game {
     let next = "";
     if (this.zone === "space") {
       const planet = this.nearestPlanet(REENTRY_RANGE);
-      if (planet) next = `Re-enter ${planet.name}  —  E`;
+      if (planet) {
+        if (this.isUnlocked(planet.id)) next = `Re-enter ${planet.name}  —  E`;
+        else {
+          const need = neededKey(planet.id);
+          next = need ? lockPrompt(planet.name, need) : `Re-enter ${planet.name}  —  E`;
+        }
+      }
+    } else if (this.cavern && this.fuel <= 0) {
+      next = `Stranded — R rescue beam (${RESCUE_FEE} CR)`;
     } else if (this.cavern && inExitShaft(this.cavern, this.ship.x, this.ship.y)) {
-      next = "Launch to space  —  E";
+      next = this.diveCargo > 0 ? "Launch to space — E  (bank cargo)" : "Launch to space  —  E";
     }
     if (next !== this.prompt) {
       this.prompt = next;
       this.markHud();
     }
+  }
+
+  private objectiveText(): string {
+    if (this.zone === "space") {
+      const near = this.nearestPlanet(REENTRY_RANGE);
+      if (near && !this.isUnlocked(near.id)) {
+        const need = neededKey(near.id);
+        if (need) return lockPrompt(near.name, need);
+      }
+      return gateObjective(this.ownedKeys());
+    }
+    if (this.boss?.alive) return `Defeat ${this.boss.def.name}`;
+    if (this.planet && this.diveCargo > 0) return "Launch — bank cargo";
+    return gateObjective(this.ownedKeys());
+  }
+
+  private isUnlocked(id: string): boolean {
+    return planetUnlocked(id, this.ownedKeys());
   }
 
   private tryTransit(): void {
@@ -715,15 +837,35 @@ export class Game {
       return;
     }
     if (this.cavern && inExitShaft(this.cavern, this.ship.x, this.ship.y)) {
-      this.exitPlanet();
+      this.exitPlanet(1);
     }
   }
 
+  private tryRescue(): void {
+    if (this.zone !== "cavern" || this.fuel > 0) return;
+    this.beginRescue();
+  }
+
   private beginReentry(planet: PlanetDef): void {
+    if (!this.isUnlocked(planet.id)) {
+      const need = neededKey(planet.id);
+      this.announce(need ? lockPrompt(planet.name, need) : `${planet.name.toUpperCase()} LOCKED`);
+      return;
+    }
     this.pendingPlanet = planet;
+    this.cineKind = "reentry";
     this.cine = new ReentryCine(planet);
     this.mode = "cine";
     sfxReentry();
+    this.markHud();
+  }
+
+  private beginRescue(): void {
+    if (this.cineKind === "rescue") return;
+    this.cineKind = "rescue";
+    this.cine = new RescueCine(this.meta.salvageRate);
+    this.mode = "cine";
+    sfxRescue();
     this.markHud();
   }
 
@@ -735,10 +877,13 @@ export class Game {
 
   private finishCine(): void {
     const planet = this.pendingPlanet;
+    const kind = this.cineKind;
     this.cine = null;
+    this.cineKind = null;
     this.pendingPlanet = null;
     this.mode = "play";
-    if (planet) this.enterPlanet(planet);
+    if (kind === "rescue") this.completeRescue();
+    else if (planet) this.enterPlanet(planet);
     else this.markHud();
   }
 
@@ -767,7 +912,8 @@ export class Game {
     this.bullets = [];
     this.sparks = [];
     this.floaters = [];
-    this.fuel = FUEL_MAX;
+    this.diveCargo = 0;
+    this.fuel = this.tankMax();
     this.ship = this.freshShip(cavern.spawnX, cavern.spawnY);
     this.ship.invuln = 1.4;
     for (const pet of this.pets) {
@@ -776,19 +922,32 @@ export class Game {
       pet.vx = 0;
       pet.vy = 0;
     }
-    this.populateCavern(planet, cavern);
+    const hold = this.diveHolds.get(planet.id);
+    if (hold) {
+      this.rocks = hold.rocks;
+      this.pickups = hold.pickups;
+    } else {
+      this.populateCavern(planet, cavern);
+      this.diveHolds.set(planet.id, { rocks: this.rocks, pickups: this.pickups });
+    }
+    this.bindBoss(planet, cavern);
     this.snapCam();
     this.announce(planet.name.toUpperCase());
     sfxWave();
     this.markHud();
   }
 
-  private exitPlanet(): void {
+  private exitPlanet(bankRate: number | null, banner = "OPEN SPACE"): void {
     const planet = this.planet;
     const hold = this.spaceHold;
+    if (planet) {
+      this.diveHolds.set(planet.id, { rocks: this.rocks, pickups: this.pickups });
+    }
+    if (bankRate != null) this.bankCargo(bankRate);
     this.zone = "space";
     this.planet = null;
     this.cavern = null;
+    this.boss = null;
     if (hold) {
       this.rocks = hold.rocks;
       this.pickups = hold.pickups;
@@ -817,7 +976,7 @@ export class Game {
       pet.y = this.ship.y;
     }
     this.snapCam();
-    this.announce("OPEN SPACE");
+    this.announce(banner);
     sfxWave();
     this.markHud();
   }
@@ -825,6 +984,7 @@ export class Game {
   private populateCavern(planet: PlanetDef, cavern: Cavern): void {
     const pods = emptySpots(cavern, planet.pods, planet.seed + 17, 20);
     for (const spot of pods) {
+      if (this.nearBoss(spot.x, spot.y, cavern, 90)) continue;
       this.spawnRock(1 + (this.seed % 2), {
         x: spot.x,
         y: spot.y,
@@ -832,9 +992,10 @@ export class Game {
       });
     }
     const loot = emptySpots(cavern, planet.loot, planet.seed + 91, 22);
-    const kinds: LootKind[] = ["credits", "credits", "credits", "shield", "rapid", "twin", "spread", "pet"];
+    const kinds: LootKind[] = ["ore", "ore", "ore", "energy", "rapid", "twin", "spread", "pet"];
     loot.forEach((spot, i) => {
-      const kind = kinds[i % kinds.length] ?? "credits";
+      if (this.nearBoss(spot.x, spot.y, cavern, 90)) return;
+      const kind = kinds[i % kinds.length] ?? "ore";
       this.pickups.push({
         x: spot.x,
         y: spot.y,
@@ -842,11 +1003,12 @@ export class Game {
         vy: 0,
         kind,
         life: 240,
-        value: kind === "credits" ? 12 + (i % 9) : 0,
+        value: kind === "ore" ? 12 + (i % 9) : kind === "energy" ? 18 : 0,
       });
     });
     const fuel = emptySpots(cavern, planet.fuel, planet.seed + 44, 16);
     for (const spot of fuel) {
+      if (this.nearBoss(spot.x, spot.y, cavern, 80)) continue;
       this.pickups.push({
         x: spot.x,
         y: spot.y,
@@ -854,9 +1016,49 @@ export class Game {
         vy: 0,
         kind: "fuel",
         life: 240,
-        value: 36,
+        value: 16,
       });
     }
+  }
+
+  private nearBoss(x: number, y: number, cavern: Cavern, range: number): boolean {
+    return dist2(x, y, cavern.bossX, cavern.bossY) < range * range;
+  }
+
+  private bindBoss(planet: PlanetDef, cavern: Cavern): void {
+    const def = BOSS_BY_PLANET[planet.id];
+    const prior = this.bosses.get(planet.id);
+    if (!def || prior === "cleared" || (def.keyId && this.ownedKeys().includes(def.keyId))) {
+      this.boss = null;
+      return;
+    }
+    if (prior) {
+      this.boss = prior;
+      return;
+    }
+    this.boss = new PlanetBoss(def, cavern.bossX, cavern.bossY);
+    this.bosses.set(planet.id, this.boss);
+  }
+
+  private bankCargo(rate: number): void {
+    const banked = Math.floor(this.diveCargo * rate);
+    if (banked > 0) {
+      this.meta.credits += banked;
+      this.runCredits += banked;
+      this.credits = this.meta.credits;
+      saveMeta(this.meta);
+    }
+    this.diveCargo = 0;
+  }
+
+  private completeRescue(): void {
+    const banked = Math.floor(this.diveCargo * this.meta.salvageRate);
+    this.bankCargo(this.meta.salvageRate);
+    const fee = Math.min(RESCUE_FEE, this.meta.credits);
+    this.meta.credits -= fee;
+    this.credits = this.meta.credits;
+    saveMeta(this.meta);
+    this.exitPlanet(null, `RESCUE +${banked} CR  (−${fee} fee)`);
   }
 
   private spawnWave(wave: number): void {
@@ -947,12 +1149,12 @@ export class Game {
     const ship = this.ship;
     ship.cooldown = Math.max(0, ship.cooldown - dt);
     ship.invuln = Math.max(0, ship.invuln - dt);
-    ship.shield = Math.max(0, ship.shield - dt);
 
     const left = this.keys.has("ArrowLeft") || this.keys.has("KeyA");
     const right = this.keys.has("ArrowRight") || this.keys.has("KeyD");
     const keyThrust = this.keys.has("ArrowUp") || this.keys.has("KeyW");
     const keyReverse = this.keys.has("ArrowDown") || this.keys.has("KeyS");
+    const wantShield = this.keys.has("ShiftLeft") || this.keys.has("ShiftRight");
 
     if (left) ship.angle -= TURN * dt;
     if (right) ship.angle += TURN * dt;
@@ -960,13 +1162,22 @@ export class Game {
     ship.thrusting = canThrust && keyThrust;
     ship.reversing = canThrust && keyReverse && !keyThrust;
 
+    if (wantShield && this.energy > 0) {
+      if (!ship.shielding) sfxShield();
+      ship.shielding = true;
+      this.energy = Math.max(0, this.energy - ENERGY_DRAIN * dt);
+      if (this.energy <= 0) ship.shielding = false;
+    } else {
+      ship.shielding = false;
+    }
+
     if (ship.thrusting || ship.reversing) {
       const dir = ship.reversing ? -1 : 1;
       const power = ship.reversing ? THRUST * 0.7 : THRUST;
       ship.vx += Math.cos(ship.angle) * power * dir * dt;
       ship.vy += Math.sin(ship.angle) * power * dir * dt;
       if (this.zone === "cavern") {
-        this.fuel = Math.max(0, this.fuel - 13 * dt);
+        this.fuel = Math.max(0, this.fuel - FUEL_THRUST * dt);
       }
       this.thrustSfx -= dt;
       if (this.thrustSfx <= 0) {
@@ -981,7 +1192,7 @@ export class Game {
         this.thrustSfx = 0.07;
       }
     } else if (this.zone === "cavern") {
-      this.fuel = Math.max(0, this.fuel - 1.2 * dt);
+      this.fuel = Math.max(0, this.fuel - FUEL_IDLE * dt);
     }
 
     if (this.zone === "cavern" && this.planet) {
@@ -1044,10 +1255,16 @@ export class Game {
   }
 
   private crashHit(): void {
+    this.absorbOrDie();
+  }
+
+  private absorbOrDie(): void {
     const ship = this.ship;
-    if (ship.shield > 0) {
-      ship.shield = 0;
-      ship.invuln = 0.8;
+    if (ship.shielding && this.energy > 0) {
+      this.energy = Math.max(0, this.energy - ENERGY_HIT);
+      ship.invuln = 0.75;
+      this.shake = 7;
+      if (this.energy <= 0) ship.shielding = false;
       this.markHud();
       sfxBoom(1);
       return;
@@ -1141,7 +1358,7 @@ export class Game {
         pet.vy = moved.vy;
       }
       pet.cooldown = Math.max(0, pet.cooldown - dt);
-      const target = this.nearestRock(pet.x, pet.y, 520);
+      const target = this.nearestFoe(pet.x, pet.y, 520);
       if (target) {
         pet.angle = Math.atan2(target.y - pet.y, target.x - pet.x);
         if (pet.cooldown <= 0) {
@@ -1159,6 +1376,19 @@ export class Game {
         pet.angle = ship.angle;
       }
     });
+  }
+
+  private nearestFoe(x: number, y: number, range: number): { x: number; y: number } | null {
+    let best: { x: number; y: number } | null = this.nearestRock(x, y, range);
+    let bestD = best ? dist2(x, y, best.x, best.y) : range * range;
+    if (this.boss?.alive) {
+      const d = dist2(x, y, this.boss.x, this.boss.y);
+      if (d < bestD) {
+        best = this.boss;
+        bestD = d;
+      }
+    }
+    return best;
   }
 
   private nearestRock(x: number, y: number, range: number): Rock | null {
@@ -1242,7 +1472,7 @@ export class Game {
       const d2 = dist2(p.x, p.y, ship.x, ship.y);
       if (d2 < 160 * 160) {
         const d = Math.sqrt(d2) || 1;
-        const pull = p.kind === "credits" || p.kind === "fuel" ? 420 : 280;
+        const pull = p.kind === "credits" || p.kind === "ore" || p.kind === "fuel" || p.kind === "energy" ? 420 : 280;
         p.vx += ((ship.x - p.x) / d) * pull * dt;
         p.vy += ((ship.y - p.y) / d) * pull * dt;
       }
@@ -1310,18 +1540,16 @@ export class Game {
       }
     }
 
+    this.collideBoss(ship);
+
     if (ship.invuln > 0) return;
     for (let i = this.rocks.length - 1; i >= 0; i--) {
       const rock = this.rocks[i];
       if (!rock) continue;
       if (hits(ship.x, ship.y, SHIP_R - 2, rock.x, rock.y, rock.radius * 0.86)) {
-        if (ship.shield > 0) {
-          ship.shield = 0;
-          ship.invuln = 1.1;
+        if (ship.shielding && this.energy > 0) {
+          this.absorbOrDie();
           this.breakRock(i, ship.x, ship.y);
-          this.shake = 8;
-          sfxBoom(2);
-          this.markHud();
         } else {
           this.killShip();
         }
@@ -1330,23 +1558,89 @@ export class Game {
     }
   }
 
+  private collideBoss(ship: Ship): void {
+    const boss = this.boss;
+    if (!boss?.alive) return;
+    for (let j = this.bullets.length - 1; j >= 0; j--) {
+      const b = this.bullets[j];
+      if (!b) continue;
+      if (hits(boss.x, boss.y, boss.def.radius, b.x, b.y, 3)) {
+        this.bullets.splice(j, 1);
+        sfxBossHit();
+        if (boss.hurt(b.team === "pet" ? 2 : 4)) this.onBossDown();
+      }
+    }
+    if (ship.invuln > 0) return;
+    for (let i = boss.shots.length - 1; i >= 0; i--) {
+      const shot = boss.shots[i];
+      if (!shot) continue;
+      if (hits(ship.x, ship.y, SHIP_R - 1, shot.x, shot.y, shot.radius)) {
+        boss.shots.splice(i, 1);
+        this.absorbOrDie();
+        return;
+      }
+    }
+    if (boss.ringHits(ship.x, ship.y, SHIP_R)) {
+      this.absorbOrDie();
+      return;
+    }
+    if (hits(ship.x, ship.y, SHIP_R - 2, boss.x, boss.y, boss.def.radius * 0.8)) {
+      this.absorbOrDie();
+    }
+  }
+
+  private stepBoss(dt: number): void {
+    if (!this.boss?.alive) return;
+    this.boss.update(dt, this.ship.x, this.ship.y, this.cavern, (x, y, size) => {
+      this.spawnRock(size, { x, y, away: false });
+    });
+  }
+
+  private onBossDown(): void {
+    const boss = this.boss;
+    if (!boss) return;
+    const def = boss.def;
+    this.burst(boss.x, boss.y, 28, def.color, 180);
+    this.burst(boss.x, boss.y, 16, "#ffe56b", 120);
+    this.shake = 14;
+    if (def.keyId && !this.meta.keys.includes(def.keyId)) this.meta.keys.push(def.keyId);
+    this.meta.maxFuel += def.tankBonus;
+    if (def.salvage != null) this.meta.salvageRate = Math.max(this.meta.salvageRate, def.salvage);
+    saveMeta(this.meta);
+    this.fuel = Math.min(this.tankMax(), this.fuel + 14);
+    this.energy = Math.min(this.energyMax(), this.energy + 14);
+    sfxKey();
+    const keyTxt = def.keyId ? titleKey(def.keyId) : "CLEAR";
+    this.announce(`${def.name.toUpperCase()} DOWN — ${keyTxt}`);
+    this.floaters.push({ x: boss.x, y: boss.y, text: keyTxt, life: 1.5, color: "#ffe56b" });
+    this.bosses.set(def.planetId, "cleared");
+    this.boss = null;
+    this.markHud();
+  }
+
   private collect(p: Pickup): void {
     sfxPickup();
     let label = "";
     let color = "#eef3ff";
-    if (p.kind === "credits") {
-      this.runCredits += p.value;
-      this.credits += p.value;
-      writeCredits(this.credits);
-      label = `+${p.value} CR`;
+    if (p.kind === "credits" || p.kind === "ore") {
+      if (this.zone === "cavern") {
+        this.diveCargo += p.value;
+        label = p.kind === "ore" ? `+${p.value} ORE` : `+${p.value} CR`;
+      } else {
+        this.meta.credits += p.value;
+        this.credits = this.meta.credits;
+        this.runCredits += p.value;
+        saveMeta(this.meta);
+        label = `+${p.value} CR`;
+      }
       color = "#ffd36b";
     } else if (p.kind === "fuel") {
-      this.fuel = Math.min(FUEL_MAX, this.fuel + p.value);
+      this.fuel = Math.min(this.tankMax(), this.fuel + p.value);
       label = "FUEL";
       color = "#ffe08a";
-    } else if (p.kind === "shield") {
-      this.ship.shield = Math.max(this.ship.shield, 10);
-      label = "SHIELD";
+    } else if (p.kind === "energy") {
+      this.energy = Math.min(this.energyMax(), this.energy + p.value);
+      label = "ENERGY";
       color = "#7ee7ff";
     } else if (p.kind === "rapid") {
       this.gear.rapid = true;
@@ -1371,9 +1665,13 @@ export class Game {
 
   private spawnPet(): boolean {
     if (this.pets.length >= MAX_PETS) {
-      this.runCredits += 25;
-      this.credits += 25;
-      writeCredits(this.credits);
+      if (this.zone === "cavern") this.diveCargo += 25;
+      else {
+        this.runCredits += 25;
+        this.meta.credits += 25;
+        this.credits = this.meta.credits;
+        saveMeta(this.meta);
+      }
       return false;
     }
     const ship = this.ship;
@@ -1404,7 +1702,8 @@ export class Game {
     this.score += pts;
     if (this.score > this.high) {
       this.high = this.score;
-      writeHigh(this.high);
+      this.meta.high = this.high;
+      saveMeta(this.meta);
     }
     this.floaters.push({
       x: rock.x,
@@ -1442,7 +1741,8 @@ export class Game {
       kind = "credits";
       value = 4 + rock.size * 6 + Math.floor(Math.random() * 8);
     } else if (roll < 0.62) {
-      kind = "shield";
+      kind = "energy";
+      value = 16;
     } else if (roll < 0.74) {
       kind = "rapid";
     } else if (roll < 0.84) {
@@ -1466,6 +1766,10 @@ export class Game {
 
   private killShip(): void {
     const ship = this.ship;
+    if (this.zone === "cavern" && this.fuel <= 0) {
+      this.beginRescue();
+      return;
+    }
     this.burst(ship.x, ship.y, 18, "#7ee7ff", 150);
     this.burst(ship.x, ship.y, 10, "#ff6b8a", 110);
     this.shake = 12;
@@ -1486,11 +1790,11 @@ export class Game {
     }
     if (this.cavern) {
       this.ship = this.freshShip(this.cavern.spawnX, this.cavern.spawnY);
-      this.fuel = Math.max(this.fuel, 40);
+      this.fuel = Math.max(this.fuel, Math.min(16, this.tankMax()));
     } else {
       this.ship = this.freshShip(ship.x, ship.y);
     }
-    this.announce("RE-ENTRY");
+    this.announce("HULL BREACH");
   }
 
   private checkWave(): void {
@@ -1545,6 +1849,9 @@ export class Game {
   private drawPlanets(ctx: CanvasRenderingContext2D): void {
     for (const planet of PLANETS) {
       if (!this.inView(planet.x, planet.y, planet.radius + 80)) continue;
+      const unlocked = this.isUnlocked(planet.id);
+      ctx.save();
+      ctx.globalAlpha = unlocked ? 1 : 0.48;
       ctx.beginPath();
       ctx.arc(planet.x, planet.y, planet.radius + 26, 0, Math.PI * 2);
       ctx.fillStyle = planet.atmosphere;
@@ -1561,6 +1868,12 @@ export class Game {
       ctx.font = `700 ${Math.max(14, 16 / this.zoom)}px sans-serif`;
       ctx.textAlign = "center";
       ctx.fillText(planet.name, planet.x, planet.y + planet.radius + 22 / this.zoom);
+      if (!unlocked) {
+        ctx.fillStyle = "#ffb36b";
+        ctx.font = `700 ${Math.max(12, 13 / this.zoom)}px sans-serif`;
+        ctx.fillText("LOCKED", planet.x, planet.y + planet.radius + 40 / this.zoom);
+      }
+      ctx.restore();
     }
   }
 
@@ -1595,7 +1908,8 @@ export class Game {
   private drawPickup(ctx: CanvasRenderingContext2D, p: Pickup): void {
     const palette: Record<LootKind, { color: string; mark: string }> = {
       credits: { color: "#ffd36b", mark: "C" },
-      shield: { color: "#7ee7ff", mark: "S" },
+      ore: { color: "#ffb36b", mark: "O" },
+      energy: { color: "#7ee7ff", mark: "E" },
       rapid: { color: "#ff7ad9", mark: "R" },
       twin: { color: "#9ad8ff", mark: "T" },
       spread: { color: "#c9a6ff", mark: "W" },
@@ -1609,7 +1923,7 @@ export class Game {
     ctx.strokeStyle = look.color;
     ctx.lineWidth = 2;
     ctx.beginPath();
-    if (p.kind === "credits") {
+    if (p.kind === "credits" || p.kind === "ore") {
       ctx.moveTo(0, -pulse);
       ctx.lineTo(pulse * 0.7, 0);
       ctx.lineTo(0, pulse);
@@ -1659,7 +1973,7 @@ export class Game {
     ctx.save();
     ctx.translate(ship.x, ship.y);
     ctx.rotate(ship.angle);
-    if (ship.shield > 0) {
+    if (ship.shielding) {
       ctx.beginPath();
       ctx.arc(0, 0, 18, 0, Math.PI * 2);
       ctx.strokeStyle = "rgba(126, 231, 255, 0.75)";
@@ -1699,7 +2013,21 @@ export class Game {
   }
 
   private drawWorldNav(ctx: CanvasRenderingContext2D): void {
-    if (this.zone !== "space" || this.mode === "menu") return;
+    if (this.mode === "menu") return;
+    if (this.zone === "cavern" && this.boss?.alive) {
+      ctx.save();
+      ctx.strokeStyle = this.boss.def.color;
+      ctx.globalAlpha = 0.5;
+      ctx.lineWidth = Math.max(1.5, 3 / this.zoom);
+      ctx.setLineDash([12 / this.zoom, 10 / this.zoom]);
+      ctx.beginPath();
+      ctx.moveTo(this.ship.x, this.ship.y);
+      ctx.lineTo(this.boss.x, this.boss.y);
+      ctx.stroke();
+      ctx.restore();
+      return;
+    }
+    if (this.zone !== "space") return;
     const planet = this.closestPlanet();
     ctx.save();
     ctx.strokeStyle = planet.color;
@@ -1710,30 +2038,6 @@ export class Game {
     ctx.moveTo(this.ship.x, this.ship.y);
     ctx.lineTo(planet.x, planet.y);
     ctx.stroke();
-    ctx.restore();
-  }
-
-  private drawReentryHint(ctx: CanvasRenderingContext2D): void {
-    if (this.mode !== "play" || this.prompt.length === 0) return;
-    const pulse = 0.78 + Math.sin(performance.now() / 200) * 0.22;
-    const boxW = Math.min(560, this.w - 40);
-    const boxH = 52;
-    const x = (this.w - boxW) / 2;
-    const y = this.h * 0.7;
-    ctx.save();
-    ctx.globalAlpha = pulse;
-    ctx.fillStyle = "rgba(8, 10, 16, 0.86)";
-    ctx.strokeStyle = "rgba(255, 107, 61, 0.85)";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.roundRect(x, y, boxW, boxH, 26);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = "#eef3ff";
-    ctx.font = "700 20px sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(this.prompt.toUpperCase(), this.w / 2, y + boxH / 2);
     ctx.restore();
   }
 
@@ -1748,7 +2052,12 @@ export class Game {
   }
 
   private drawNavMarker(ctx: CanvasRenderingContext2D): void {
-    if (this.zone !== "space" || this.mode === "menu" || this.mode === "over") return;
+    if (this.mode === "menu" || this.mode === "over") return;
+    if (this.zone === "cavern" && this.boss?.alive) {
+      this.drawEdgeMarker(ctx, this.boss.x, this.boss.y, this.boss.def.color, this.boss.def.name);
+      return;
+    }
+    if (this.zone !== "space") return;
     const planet = this.closestPlanet();
     const sx = (planet.x - this.camX) * this.zoom;
     const sy = (planet.y - this.camY) * this.zoom;
@@ -1759,16 +2068,33 @@ export class Game {
     const dy = planet.y - this.ship.y;
     const dist = Math.hypot(dx, dy);
     if (onScreen) {
-      ctx.fillStyle = "#eef3ff";
+      const locked = !this.isUnlocked(planet.id);
+      ctx.fillStyle = locked ? "#ffb36b" : "#eef3ff";
       ctx.font = `700 ${Math.max(13, 14 / this.zoom)}px sans-serif`;
       ctx.textAlign = "center";
-      ctx.fillText(
-        dist < planet.radius + REENTRY_RANGE ? `${planet.name}  ·  E` : planet.name,
-        sx,
-        sy + planet.radius * this.zoom + 18,
-      );
+      const label = locked
+        ? `${planet.name}  ·  LOCKED`
+        : dist < planet.radius + REENTRY_RANGE
+          ? `${planet.name}  ·  E`
+          : planet.name;
+      ctx.fillText(label, sx, sy + planet.radius * this.zoom + 18);
       return;
     }
+    this.drawEdgeMarker(ctx, planet.x, planet.y, planet.color, `${planet.name}  ${Math.round(dist)}`);
+  }
+
+  private drawEdgeMarker(
+    ctx: CanvasRenderingContext2D,
+    wx: number,
+    wy: number,
+    color: string,
+    label: string,
+  ): void {
+    const sx = (wx - this.camX) * this.zoom;
+    const sy = (wy - this.camY) * this.zoom;
+    const pad = 56;
+    const onScreen = sx > pad && sx < this.w - pad && sy > pad && sy < this.h - pad - 140;
+    if (onScreen) return;
     const cx = this.w * 0.5;
     const cy = this.h * 0.5;
     const ang = Math.atan2(sy - cy, sx - cx);
@@ -1785,7 +2111,7 @@ export class Game {
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(ang);
-    ctx.fillStyle = planet.color;
+    ctx.fillStyle = color;
     ctx.beginPath();
     ctx.moveTo(14, 0);
     ctx.lineTo(-8, 9);
@@ -1798,7 +2124,7 @@ export class Game {
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
     const labelY = y > this.h - 90 ? y - 28 : y + 16;
-    ctx.fillText(`${planet.name}  ${Math.round(dist)}`, x, labelY);
+    ctx.fillText(label, x, labelY);
   }
 
   private drawMinimap(ctx: CanvasRenderingContext2D): void {
@@ -1822,6 +2148,12 @@ export class Game {
       ctx.strokeRect(x + this.camX * sx, y + this.camY * sy, this.viewW() * sx, this.viewH() * sy);
       ctx.fillStyle = "#7ee7ff";
       ctx.fillRect(x + this.ship.x * sx - 2, y + this.ship.y * sy - 2, 4, 4);
+      if (this.boss?.alive) {
+        ctx.fillStyle = this.boss.def.color;
+        ctx.beginPath();
+        ctx.arc(x + this.boss.x * sx, y + this.boss.y * sy, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
     } else {
       const sx = mw / SPACE_W;
       const sy = mh / SPACE_H;
@@ -1854,37 +2186,5 @@ export class Game {
       ctx.fill();
     }
     ctx.restore();
-  }
-}
-
-function readHigh(): number {
-  try {
-    return Number(localStorage.getItem(HIGH_KEY) ?? "0") || 0;
-  } catch {
-    return 0;
-  }
-}
-
-function writeHigh(n: number): void {
-  try {
-    localStorage.setItem(HIGH_KEY, String(n));
-  } catch {
-    /* ignore */
-  }
-}
-
-function readCredits(): number {
-  try {
-    return Number(localStorage.getItem(CREDIT_KEY) ?? "0") || 0;
-  } catch {
-    return 0;
-  }
-}
-
-function writeCredits(n: number): void {
-  try {
-    localStorage.setItem(CREDIT_KEY, String(n));
-  } catch {
-    /* ignore */
   }
 }

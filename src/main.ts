@@ -27,6 +27,11 @@ const fireBtn = must(document.querySelector<HTMLButtonElement>("#fire"), "#fire"
 const promptEl = must(document.querySelector<HTMLElement>("#prompt"), "#prompt");
 const fuelWrap = must(document.querySelector<HTMLElement>("#fuel-wrap"), "#fuel-wrap");
 const fuelBar = must(document.querySelector<HTMLElement>("#fuel-bar"), "#fuel-bar");
+const energyWrap = must(document.querySelector<HTMLElement>("#energy-wrap"), "#energy-wrap");
+const energyBar = must(document.querySelector<HTMLElement>("#energy-bar"), "#energy-bar");
+const cargoWrap = must(document.querySelector<HTMLElement>("#cargo-wrap"), "#cargo-wrap");
+const cargoEl = must(document.querySelector<HTMLElement>("#cargo"), "#cargo");
+const objectiveEl = must(document.querySelector<HTMLElement>("#objective"), "#objective");
 
 const ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
 if (!ctx) {
@@ -81,8 +86,16 @@ function syncLiveHud(snapshot: HudSnapshot): void {
   const playing = snapshot.mode === "play";
   promptEl.hidden = !playing || snapshot.prompt.length === 0;
   promptEl.textContent = snapshot.prompt;
+  objectiveEl.hidden = !playing || snapshot.objective.length === 0;
+  objectiveEl.textContent = snapshot.objective;
+  cargoWrap.hidden = !playing || snapshot.zone !== "cavern";
+  cargoEl.textContent = String(snapshot.cargo);
   fuelWrap.hidden = !playing || snapshot.zone !== "cavern";
-  fuelBar.style.width = `${clamp(snapshot.fuel, 0, 100)}%`;
+  const fuelPct = snapshot.maxFuel > 0 ? (snapshot.fuel / snapshot.maxFuel) * 100 : 0;
+  fuelBar.style.width = `${clamp(fuelPct, 0, 100)}%`;
+  energyWrap.hidden = !playing;
+  const energyPct = snapshot.maxEnergy > 0 ? (snapshot.energy / snapshot.maxEnergy) * 100 : 0;
+  energyBar.style.width = `${clamp(energyPct, 0, 100)}%`;
 }
 
 function clamp(n: number, a: number, b: number): number {

@@ -21,6 +21,8 @@ export type Cavern = {
   solid: Uint8Array;
   spawnX: number;
   spawnY: number;
+  bossX: number;
+  bossY: number;
   fill: string;
   stroke: string;
   deep: string;
@@ -65,7 +67,7 @@ export const PLANETS: PlanetDef[] = [
     fill: "#3a1610",
     stroke: "#e06030",
     deep: "#140806",
-    gravity: 460,
+    gravity: 220,
     cols: 200,
     rows: 150,
     tile: 36,
@@ -87,7 +89,7 @@ export const PLANETS: PlanetDef[] = [
     fill: "#102436",
     stroke: "#7ec8e8",
     deep: "#071018",
-    gravity: 210,
+    gravity: 140,
     cols: 220,
     rows: 140,
     tile: 36,
@@ -109,7 +111,7 @@ export const PLANETS: PlanetDef[] = [
     fill: "#102414",
     stroke: "#62c56e",
     deep: "#07140c",
-    gravity: 300,
+    gravity: 180,
     cols: 210,
     rows: 160,
     tile: 36,
@@ -131,7 +133,7 @@ export const PLANETS: PlanetDef[] = [
     fill: "#1a1028",
     stroke: "#b07cff",
     deep: "#0c0814",
-    gravity: 390,
+    gravity: 200,
     cols: 240,
     rows: 170,
     tile: 36,
@@ -210,6 +212,20 @@ export function generateCavern(planet: PlanetDef): Cavern {
   }
   for (let r = 0; r < 22; r++) carve(shaft, r, 3);
 
+  const bossC = clamp(Math.floor(cols * 0.7), 18, cols - 18);
+  const bossR = rows - 22;
+  carve(bossC, bossR, 9);
+  carve(bossC - 6, bossR, 5);
+  carve(bossC + 6, bossR + 2, 5);
+  let cc = shaft;
+  let rr = 18;
+  while (rr < bossR || Math.abs(cc - bossC) > 1) {
+    carve(cc, rr, 3);
+    if (rr < bossR) rr += 1;
+    if (cc < bossC) cc += 1;
+    else if (cc > bossC) cc -= 1;
+  }
+
   const spawnX = (shaft + 0.5) * tile;
   const spawnY = 7 * tile;
   const cavern: Cavern = {
@@ -221,6 +237,8 @@ export function generateCavern(planet: PlanetDef): Cavern {
     solid,
     spawnX,
     spawnY,
+    bossX: (bossC + 0.5) * tile,
+    bossY: (bossR + 0.5) * tile,
     fill: planet.fill,
     stroke: planet.stroke,
     deep: planet.deep,

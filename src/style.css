@@ -89,6 +89,10 @@ body {
   color: #ffd36b;
 }
 
+#cargo {
+  color: #ffb36b;
+}
+
 #lives {
   display: flex;
   gap: 8px;
@@ -140,19 +144,25 @@ body {
   }
 }
 
-#fuel-wrap {
+#meters {
   pointer-events: none;
   position: absolute;
   left: 16px;
   bottom: 156px;
   width: 168px;
+  display: grid;
+  gap: 10px;
+}
+
+#fuel-wrap,
+#energy-wrap {
   color: var(--muted);
   font-size: 10px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
 }
 
-.fuel-track {
+.meter-track {
   margin-top: 6px;
   height: 8px;
   border: 1px solid var(--line);
@@ -166,6 +176,17 @@ body {
   height: 100%;
   width: 100%;
   background: #ffe08a;
+}
+
+#energy-bar {
+  display: block;
+  height: 100%;
+  width: 100%;
+  background: #7ee7ff;
+}
+
+.meter-track.energy {
+  box-shadow: 0 0 10px rgba(126, 231, 255, 0.12);
 }
 
 .loadout {
@@ -326,6 +347,38 @@ kbd {
   }
 }
 
+#combo {
+  pointer-events: none;
+  position: absolute;
+  left: 50%;
+  top: 72px;
+  transform: translateX(-50%);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--cyan);
+  letter-spacing: 0.08em;
+  text-shadow: 0 0 18px var(--glow);
+}
+
+#objective {
+  pointer-events: none;
+  position: absolute;
+  left: 50%;
+  top: max(16px, env(safe-area-inset-top));
+  transform: translateX(-50%);
+  max-width: min(560px, calc(100% - 280px));
+  padding: 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(8, 10, 16, 0.72);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  text-align: center;
+}
+
 @media (max-width: 640px) {
   .panel {
     padding: 22px 20px 20px;
@@ -341,6 +394,13 @@ kbd {
 
   .hud-cluster {
     gap: 12px;
+  }
+
+  #objective {
+    max-width: calc(100% - 24px);
+    top: auto;
+    bottom: 88px;
+    font-size: 11px;
   }
 
   .loadout {

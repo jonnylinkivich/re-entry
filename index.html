@@ -27,6 +27,10 @@
             <span>Credits</span>
             <strong id="credits">0</strong>
           </div>
+          <div class="stat" id="cargo-wrap" hidden>
+            <span>Cargo</span>
+            <strong id="cargo">0</strong>
+          </div>
         </div>
         <div class="hud-cluster hud-cluster-end">
           <div id="loadout" class="loadout" hidden></div>
@@ -39,10 +43,17 @@
       </header>
 
       <div id="combo" hidden>x2</div>
+      <div id="objective" hidden></div>
       <div id="prompt" hidden></div>
-      <div id="fuel-wrap" hidden>
-        <span>Fuel</span>
-        <div class="fuel-track"><i id="fuel-bar"></i></div>
+      <div id="meters">
+        <div id="fuel-wrap" hidden>
+          <span>Fuel</span>
+          <div class="meter-track"><i id="fuel-bar"></i></div>
+        </div>
+        <div id="energy-wrap" hidden>
+          <span>Energy</span>
+          <div class="meter-track energy"><i id="energy-bar"></i></div>
+        </div>
       </div>
 
       <div id="overlay">
@@ -50,15 +61,17 @@
           <p class="kicker">8-bit arcade</p>
           <h1>RE-ENTRY</h1>
           <p class="lede">
-            Open space is huge. Fly to Cinder, Rime, Mycel, or Vesper and press
-            E — the craft hits atmosphere in an 8-bit re-entry, then you fly the
-            caverns. Launch back out the shaft when you want the sky again.
+            Cinder is open. Dive the caverns, haul ore, and beat the planet boss
+            for the key to the next world. Fuel is scarce. Hold Shift to raise
+            shields — they drain energy. Run dry and the rescue beam brings you
+            home with half the cargo.
           </p>
           <ul class="controls">
             <li><kbd>A</kbd> <kbd>D</kbd> turn · <kbd>W</kbd> thrust forward · <kbd>S</kbd> reverse</li>
             <li><kbd>Space</kbd> / click — shoot. Click a nearby planet to dive.</li>
-            <li><kbd>E</kbd> — re-enter when the prompt lights up, or launch from a shaft</li>
-            <li>Scroll to zoom in and out. Radar shows the rest of the map.</li>
+            <li><kbd>Shift</kbd> — shields (energy) · <kbd>E</kbd> re-enter / launch</li>
+            <li><kbd>R</kbd> — rescue beam when stranded · <kbd>M</kbd> mute</li>
+            <li>Scroll to zoom. Radar marks the living boss.</li>
             <li><kbd>Esc</kbd> — pause</li>
           </ul>
           <button type="button" id="play" class="btn">Begin re-entry</button>
