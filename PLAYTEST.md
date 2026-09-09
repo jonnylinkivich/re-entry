@@ -12,6 +12,8 @@ Optional query flags (run-local, not required for a real playthrough):
 
 `A`/`D` turn · `W`/`S` thrust · `Space` shoot · `E` re-enter/launch · `Shift` shield · `R` rescue when stranded · `Esc` pause · `M` mute
 
+Hold `W`/`A`/`D` — tapping thrust does nothing useful. Click the canvas after **Begin re-entry** so keys register.
+
 ## Loop checks
 
 1. **Menu → space**  
@@ -40,6 +42,135 @@ Optional query flags (run-local, not required for a real playthrough):
 8. **Soft-lock**  
    Locked planet always names the missing key. Duplicate HTML + canvas re-entry prompt should not appear (HTML prompt only). Combo `xN` sits under the top HUD.
 
-## Ads / clips
+---
 
-Hero and loop captures (if produced) live in `/opt/cursor/artifacts` as `ad_hero.mp4` and `ad_loop.gif`.
+## Session notes (ad capture, live HUD)
+
+Recorded against the running Vite server on `:47331` (`?playtest=1`) while the progression-loop agent was landing. Captures include **Ember Warden**, fuel/energy meters, **TANK / SALVAGE**, **STRANDED — R RESCUE BEAM**, and the 8-bit RE-ENTRY cine.
+
+### Space
+
+- Ship starts next to orange **Cinder**, already in re-entry range. Wave rocks spawn hundreds of pixels out; at default/zoom-out they read as tiny outlines, not a dogfight.
+- **P0 leftover:** HTML `#prompt` (`RE-ENTER CINDER — E`) plus canvas `drawNavMarker` label (`Cinder · E`). The canvas font is `14 / zoom`, so zoomed-out it becomes a giant title over the planet. Ads had to treat it as a beat or crop around it.
+- `HULL BREACH` banner is the right death sting (no longer “RE-ENTRY”).
+- Objective **DEFEAT EMBER WARDEN** and `Rime LOCKED` are on-screen in space. Good fantasy; they compete with the planet.
+
+### Cinematic
+
+- 8-bit dive is the sell: chunky pixels, **RE-ENTRY / CINDER**, flames, scanlines, `PRESS E TO SKIP`.
+- Duration ~3.6s (`cinematic.ts`). `E` / `Space` / `Esc` skip — easy to clip if Space is still held from shooting. Let ~2s+ play.
+- HTML HUD (score / objective / tank chips) still composites over the cine unless `hud.hidden` for `cine` is actually applied. Later commits on this branch hide HUD during cine; verify after pull.
+
+### Cavern
+
+- Gravity is climbable now (Cinder **220** vs thrust **360**). Fuel is the killer: tanks drain fast, **STRANDED — R RESCUE BEAM (15 CR)** is a strong moment.
+- Ember Warden chamber, dashed lock, radar pip, loot (ore / fuel / weapons), Twin/Shield chips, combo `x3` all showed up in captures.
+- Climb/launch is possible from the entry shaft (`LAUNCH TO SPACE — E (BANK CARGO)`). Hero includes an **OPEN SPACE** return after a shaft `E`. Full “fly the whole shaft on a dry tank” is still easy to fail — rescue is the intended out.
+- `populateCavern` now stores a `diveHolds` snapshot so loot is not restacked every visit (fixed vs original P0).
+
+### Audio
+
+- SFX: thrust, shots, re-entry rumble, pickups. `M` mute is wired (`audio.ts` `toggleMuted` + `game.ts` `KeyM`).
+- No music bed. Mute has no HUD icon (banner only).
+
+### Mobile / touch
+
+- `#fire` is coarse-pointer only (`main.ts`). No on-screen thrust/turn. `touch-action: none` on `html,body`. Phone play is Fire-only.
+- Click-to-dive a nearby planet works on mouse; not a substitute for virtual stick.
+
+### Juice / UX
+
+- Cine + cavern scanlines + boss nav line are punchy.
+- Space combat lacks scale: ship is a few pixels unless you scroll-zoom in, at which point rocks leave frame.
+- Combo is styled (`#combo` in `style.css`) but easy to miss under the objective pill.
+- Credits bank on launch/rescue; there is still no shop to spend them.
+
+### Performance
+
+- Canvas 32k×24k starfield + cavern tiles stayed smooth in 1920 capture. No hitch noted during cine or boss.
+
+---
+
+## Edits by severity
+
+Verified against this branch after the progression-loop land. Original main-branch P0 gravity / mute / death-banner / drift-keys are **done**; remaining items below.
+
+### P0
+
+| Issue | Hint |
+| --- | --- |
+| Duplicate / oversized re-entry callout | HTML `#prompt` in `index.html` + `main.ts` `syncLiveHud`. Canvas `Game.drawNavMarker` (`game.ts`) draws `{name} · E` with `font = 14 / zoom`, which explodes when zoomed out. Cap the px size (e.g. `Math.min(18, 14 / zoom)`) **or** drop the canvas label and keep HTML only. |
+| No touch thrust/turn | `main.ts` — `fireBtn` only when `(pointer: coarse)`. Need virtual stick / hold zones for `W/A/D`. |
+
+### P1
+
+| Issue | Hint |
+| --- | --- |
+| Space dogfight doesn’t read | `game.ts` `spawnRock` `away` distance 480–1600. Spawn a closer first wave, or start zoomed in (`zoomWanted`). |
+| Cine skip from held Space | `game.ts` `key()` — `Space` skips cine. Clear `keys` / ignore held Space for ~0.4s when `beginReentry` starts. |
+| Fuel scramble vs climb fantasy | `meta.ts` `FUEL_THRUST` / idle drain vs `tankMax()` 40. Easy to strand before Ember Warden without `?playtest=1`. Either a shaft fuel pad or a first-dive tank bump. |
+| Combo vs objective overlap | `style.css` `#combo` `top: 72px` sits under `#objective`. |
+| No spend sink for credits | Credits persist (`meta.ts` `reentry-credits`) and pay rescue fees only. Shop / reroll still missing. |
+| Mute has no persistent control | `KeyM` works; no button / icon. `setMuted` is used. |
+
+### P2
+
+| Issue | Hint |
+| --- | --- |
+| No music | `audio.ts` is SFX-only. |
+| Mobile is Fire-only | Same as P0 touch; Fire circle is the only coarse control. |
+| No shop for banked credits | See P1. |
+| Vite `base` | **Done for relative deploy:** `vite.config.ts` `base: "./"`. Root hosting still works; GitHub Pages project pages should keep `base: '/re-entry/'` or `./`. |
+
+### Fixed since original main playtest (do not re-open)
+
+- Cinder gravity 460 > thrust 360 → **220 / 360** (`cavern.ts` `PLANETS`, `game.ts` `THRUST`).
+- Death banner “RE-ENTRY” → **HULL BREACH**.
+- `setMuted` unused → **M** + `toggleMuted`.
+- `localStorage` `drift-*` → `reentry-save` / `reentry-highscore` with drift fallback (`meta.ts`).
+- Combo unstyled → positioned cyan `#combo`.
+- Fuel / energy / rescue / gate / bosses → shipped on this branch.
+- `populateCavern` restack → `diveHolds` once per planet per run.
+
+---
+
+## Build / hosting
+
+- `npm run build` (`tsc` + vite) was **clean on main** (dist JS ~40kb) and the sibling agent reports it **passed on this branch**.
+- Static hosting: `base: "./"` in `vite.config.ts` — relative asset URLs. Root deploy works. GitHub Pages **project** site still needs `base: '/re-entry/'` if the app is not served from domain root.
+
+---
+
+## Promo artifacts
+
+Punchy cuts (browser chrome cropped). `ad_hero.mp4` / `ad_loop.gif` names were already claimed by a parallel 46s/5s capture, so the **spec’d 720p30 hero and 720px gif** are saved under the `_720` names. `recording_demo.mp4` is the same file as the 720p hero (for review).
+
+| File | What | Specs |
+| --- | --- | --- |
+| `/opt/cursor/artifacts/ad_hero_720p.mp4` | Punchy hero (hard cuts) | 16.7s, 1280×720, 30fps, H.264 yuv420p, ~1.4MB |
+| `/opt/cursor/artifacts/recording_demo.mp4` | Same encode as `ad_hero_720p.mp4` | 16.7s, 1280×720, 30fps, ~1.4MB |
+| `/opt/cursor/artifacts/ad_loop_720.gif` | Cine flames → cavern shoot | 6.1s, 720×406, 13fps, palettegen+paletteuse, ~1.6MB |
+| `/opt/cursor/artifacts/ad_space_fire.mp4` | Vertical 9:16 space/Cinder | 2.7s, 406×720, 30fps, H.264 yuv420p |
+| `/opt/cursor/artifacts/ad_reentry.gif` | Vertical cine | 3.7s, 406×720, 13fps, ~0.9MB |
+| `/opt/cursor/artifacts/ad_cavern_vertical.mp4` | Vertical Ember Warden | 4.0s, 406×720, 30fps, H.264 yuv420p |
+| `/opt/cursor/artifacts/still_menu.png` | Menu + new loop copy | 1760×916 PNG |
+| `/opt/cursor/artifacts/still_cinematic.png` | 8-bit RE-ENTRY / CINDER | 1760×990 PNG |
+| `/opt/cursor/artifacts/still_cavern.png` | Cavern + Ember Warden | 1760×990 PNG |
+
+Also on disk (raw / parallel captures, not the punchy edit):
+
+- `/opt/cursor/artifacts/ad_hero.mp4` — 46.4s, 1920×1200, 60fps (~5.0MB), uncropped long take
+- `/opt/cursor/artifacts/ad_loop.gif` — 5.3s, 960×540, 8fps (~0.24MB)
+- `/opt/cursor/artifacts/raw_space_cine_cavern_run.mp4`
+- `/opt/cursor/artifacts/raw_cine_and_cavern.mp4`
+- `/opt/cursor/artifacts/raw_cavern_boss_scramble.mp4`
+
+### Hero beat list (`ad_hero_720p.mp4` / `recording_demo.mp4`)
+
+1. **Space** — Cinder, rocks, hull-breach (dogfight is small-scale; giant `Cinder · E` is in frame).
+2. **Planet approach** — dashed nav, HTML re-entry pill.
+3. **E cinematic** — chunky pixels, planet name, flames (~3.7s, not skipped immediately).
+4. **Cavern combat / fuel scramble** — Ember Warden lock, loot, Twin/Shield, fuel bar.
+5. **Launch to space** — shaft / `OPEN SPACE` return to Cinder.
+
+Gap: space shooting never fills the frame; zoom-in loses rocks. Cavern + cine carry the ad.
