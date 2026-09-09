@@ -33,7 +33,10 @@ const cargoWrap = must(document.querySelector<HTMLElement>("#cargo-wrap"), "#car
 const cargoEl = must(document.querySelector<HTMLElement>("#cargo"), "#cargo");
 const objectiveEl = must(document.querySelector<HTMLElement>("#objective"), "#objective");
 
-const ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
+const ctx =
+  canvas.getContext("2d", { alpha: false, desynchronized: true }) ??
+  canvas.getContext("2d", { alpha: false }) ??
+  canvas.getContext("2d");
 if (!ctx) {
   showScreen("error");
   throw new Error("Canvas 2D is unavailable.");
