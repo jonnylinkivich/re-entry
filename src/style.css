@@ -58,6 +58,15 @@ body {
   padding: max(16px, env(safe-area-inset-top)) 22px 0;
 }
 
+#hud[hidden],
+#overlay[hidden],
+#prompt[hidden],
+#combo[hidden],
+#objective[hidden],
+#meters [hidden] {
+  display: none !important;
+}
+
 .hud-cluster {
   display: flex;
   gap: 22px;
