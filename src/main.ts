@@ -87,6 +87,8 @@ function renderHud(snapshot: HudSnapshot): void {
 
 function syncLiveHud(snapshot: HudSnapshot): void {
   const playing = snapshot.mode === "play";
+  hud.hidden = snapshot.mode === "menu" || snapshot.mode === "error" || snapshot.mode === "cine";
+  overlay.hidden = snapshot.mode === "play" || snapshot.mode === "cine";
   promptEl.hidden = !playing || snapshot.prompt.length === 0;
   promptEl.textContent = snapshot.prompt;
   objectiveEl.hidden = !playing || snapshot.objective.length === 0;
