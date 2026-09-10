@@ -72,6 +72,7 @@
             <li><kbd>Shift</kbd> — shields (energy) · <kbd>E</kbd> re-enter / launch</li>
             <li><kbd>R</kbd> — rescue beam when stranded · <kbd>M</kbd> mute</li>
             <li>Scroll to zoom. Radar marks the living boss.</li>
+            <li>On a phone: L / R turn, Thrust / Rev, Fire</li>
             <li><kbd>Esc</kbd> — pause</li>
           </ul>
           <button type="button" id="play" class="btn">Begin re-entry</button>
@@ -100,6 +101,12 @@
         </section>
       </div>
 
+      <div id="pads" hidden>
+        <button type="button" class="pad-btn" data-key="KeyA" tabindex="-1" aria-label="Turn left">L</button>
+        <button type="button" class="pad-btn pad-thrust" data-key="KeyW" tabindex="-1" aria-label="Thrust">Thrust</button>
+        <button type="button" class="pad-btn" data-key="KeyD" tabindex="-1" aria-label="Turn right">R</button>
+        <button type="button" class="pad-btn pad-rev" data-key="KeyS" tabindex="-1" aria-label="Reverse">Rev</button>
+      </div>
       <button type="button" id="fire" class="fire-btn" hidden aria-label="Fire">Fire</button>
     </div>
     <script type="module" src="/src/main.ts"></script>

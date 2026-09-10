@@ -1865,12 +1865,12 @@ export class Game {
       ctx.fillStyle = "rgba(255,255,255,0.16)";
       ctx.fill();
       ctx.fillStyle = "#eef3ff";
-      ctx.font = `700 ${Math.max(14, 16 / this.zoom)}px sans-serif`;
+      ctx.font = `700 ${this.worldFontPx(16)}px sans-serif`;
       ctx.textAlign = "center";
       ctx.fillText(planet.name, planet.x, planet.y + planet.radius + 22 / this.zoom);
       if (!unlocked) {
         ctx.fillStyle = "#ffb36b";
-        ctx.font = `700 ${Math.max(12, 13 / this.zoom)}px sans-serif`;
+        ctx.font = `700 ${this.worldFontPx(13)}px sans-serif`;
         ctx.fillText("LOCKED", planet.x, planet.y + planet.radius + 40 / this.zoom);
       }
       ctx.restore();
@@ -2068,19 +2068,17 @@ export class Game {
     const dy = planet.y - this.ship.y;
     const dist = Math.hypot(dx, dy);
     if (onScreen) {
-      const locked = !this.isUnlocked(planet.id);
-      ctx.fillStyle = locked ? "#ffb36b" : "#eef3ff";
-      ctx.font = `700 ${Math.max(13, 14 / this.zoom)}px sans-serif`;
-      ctx.textAlign = "center";
-      const label = locked
-        ? `${planet.name}  ·  LOCKED`
-        : dist < planet.radius + REENTRY_RANGE
-          ? `${planet.name}  ·  E`
-          : planet.name;
-      ctx.fillText(label, sx, sy + planet.radius * this.zoom + 18);
+      // Name / LOCKED already come from drawPlanets. Re-entry is the HTML
+      // #prompt — a second "{name} · E" in screen space at 14/zoom explodes
+      // at ZOOM_MIN (0.08). Keep the off-screen arrow + distance only.
       return;
     }
     this.drawEdgeMarker(ctx, planet.x, planet.y, planet.color, `${planet.name}  ${Math.round(dist)}`);
+  }
+
+  /** World-space font that stays a fixed screen-pixel size at any zoom. */
+  private worldFontPx(screenPx: number, minPx = 12, maxPx = 18): number {
+    return clamp(screenPx, minPx, maxPx) / this.zoom;
   }
 
   private drawEdgeMarker(

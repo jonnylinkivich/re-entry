@@ -24,6 +24,7 @@ const playBtn = must(document.querySelector<HTMLButtonElement>("#play"), "#play"
 const resumeBtn = must(document.querySelector<HTMLButtonElement>("#resume"), "#resume");
 const retryBtn = must(document.querySelector<HTMLButtonElement>("#retry"), "#retry");
 const fireBtn = must(document.querySelector<HTMLButtonElement>("#fire"), "#fire");
+const padsEl = must(document.querySelector<HTMLElement>("#pads"), "#pads");
 const promptEl = must(document.querySelector<HTMLElement>("#prompt"), "#prompt");
 const fuelWrap = must(document.querySelector<HTMLElement>("#fuel-wrap"), "#fuel-wrap");
 const fuelBar = must(document.querySelector<HTMLElement>("#fuel-bar"), "#fuel-bar");
@@ -54,7 +55,9 @@ function showScreen(mode: Mode | "error"): void {
   overlay.hidden = mode === "play" || mode === "cine";
   hud.hidden = mode === "menu" || mode === "error" || mode === "cine";
   const coarse = window.matchMedia("(pointer: coarse)").matches;
-  fireBtn.hidden = !(mode === "play" && coarse);
+  const showPads = mode === "play" && coarse;
+  fireBtn.hidden = !showPads;
+  padsEl.hidden = !showPads;
 }
 
 function renderHud(snapshot: HudSnapshot): void {
@@ -194,21 +197,57 @@ surface.addEventListener(
   { passive: false },
 );
 
-fireBtn.addEventListener("pointerdown", (event) => {
-  event.preventDefault();
-  event.stopPropagation();
-  unlockAudio();
-  game.setFire(true);
-});
+const PAD_CODES = ["KeyA", "KeyD", "KeyW", "KeyS"] as const;
 
-fireBtn.addEventListener("pointerup", () => game.setFire(false));
-fireBtn.addEventListener("pointercancel", () => game.setFire(false));
+function bindHold(
+  el: HTMLElement,
+  onDown: () => void,
+  onUp: () => void,
+): void {
+  const down = (event: PointerEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    unlockAudio();
+    try {
+      el.setPointerCapture(event.pointerId);
+    } catch {
+      /* capture is optional */
+    }
+    el.blur();
+    onDown();
+  };
+  el.addEventListener("pointerdown", down);
+  el.addEventListener("pointerup", onUp);
+  el.addEventListener("pointercancel", onUp);
+  el.addEventListener("lostpointercapture", onUp);
+}
 
-window.addEventListener("blur", () => {
+bindHold(
+  fireBtn,
+  () => game.setFire(true),
+  () => game.setFire(false),
+);
+
+for (const pad of padsEl.querySelectorAll<HTMLButtonElement>("[data-key]")) {
+  const code = pad.dataset.key;
+  if (!code) continue;
+  bindHold(
+    pad,
+    () => game.key(code, true),
+    () => game.key(code, false),
+  );
+}
+
+function releaseHolds(): void {
   thrustingPointer = false;
   game.clearPointer();
   game.setFire(false);
-});
+  for (const code of PAD_CODES) game.key(code, false);
+}
+
+window.addEventListener("blur", releaseHolds);
+padsEl.addEventListener("contextmenu", (event) => event.preventDefault());
+fireBtn.addEventListener("contextmenu", (event) => event.preventDefault());
 
 window.addEventListener("resize", fit);
 fit();

@@ -40,7 +40,7 @@ Hold `W`/`A`/`D` — tapping thrust does nothing useful. Click the canvas after 
    Refresh. Credits, keys, tank, salvage, high score remain (`reentry-save`). Guns reset between full runs but persist space ↔ planet inside one run.
 
 8. **Soft-lock**  
-   Locked planet always names the missing key. Duplicate HTML + canvas re-entry prompt should not appear (HTML prompt only). Combo `xN` sits under the top HUD.
+   Locked planet always names the missing key. Re-entry is the HTML `#prompt` only — no canvas `{name} · E`. Combo `xN` sits under the top HUD.
 
 ---
 
@@ -51,7 +51,7 @@ Recorded against the running Vite server on `:47331` (`?playtest=1`) while the p
 ### Space
 
 - Ship starts next to orange **Cinder**, already in re-entry range. Wave rocks spawn hundreds of pixels out; at default/zoom-out they read as tiny outlines, not a dogfight.
-- **P0 leftover:** HTML `#prompt` (`RE-ENTER CINDER — E`) plus canvas `drawNavMarker` label (`Cinder · E`). The canvas font is `14 / zoom`, so zoomed-out it becomes a giant title over the planet. Ads had to treat it as a beat or crop around it.
+- Re-entry callout is the HTML `#prompt` pill only. `drawNavMarker` no longer draws `{name} · E` on-planet (that used `14 / zoom` in screen space and exploded at `ZOOM_MIN`). Off-screen nav arrow + distance stay. Planet names in `drawPlanets` use a screen-pixel font cap.
 - `HULL BREACH` banner is the right death sting (no longer “RE-ENTRY”).
 - Objective **DEFEAT EMBER WARDEN** and `Rime LOCKED` are on-screen in space. Good fantasy; they compete with the planet.
 
@@ -75,8 +75,8 @@ Recorded against the running Vite server on `:47331` (`?playtest=1`) while the p
 
 ### Mobile / touch
 
-- `#fire` is coarse-pointer only (`main.ts`). No on-screen thrust/turn. `touch-action: none` on `html,body`. Phone play is Fire-only.
-- Click-to-dive a nearby planet works on mouse; not a substitute for virtual stick.
+- Coarse pointer (`matchMedia("(pointer: coarse)")`, hidden on `pointer: fine`): `#pads` Turn L / Thrust / Turn R / Rev plus `#fire`. Wired to the same `keys` Set as `A/D/W/S` and `setFire`. Keyboard still works on desktop.
+- Click-to-dive a nearby planet works on mouse.
 
 ### Juice / UX
 
@@ -99,8 +99,8 @@ Verified against this branch after the progression-loop land. Original main-bran
 
 | Issue | Hint |
 | --- | --- |
-| Duplicate / oversized re-entry callout | HTML `#prompt` in `index.html` + `main.ts` `syncLiveHud`. Canvas `Game.drawNavMarker` (`game.ts`) draws `{name} · E` with `font = 14 / zoom`, which explodes when zoomed out. Cap the px size (e.g. `Math.min(18, 14 / zoom)`) **or** drop the canvas label and keep HTML only. |
-| No touch thrust/turn | `main.ts` — `fireBtn` only when `(pointer: coarse)`. Need virtual stick / hold zones for `W/A/D`. |
+| Duplicate / oversized re-entry callout | **Fixed.** HTML `#prompt` only. `drawNavMarker` skips the on-planet `{name} · E`. Planet labels use `worldFontPx` (screen pixels, not `14/zoom` in screen space). Off-screen arrow + distance unchanged. |
+| No touch thrust/turn | **Fixed.** `#pads` (L / Thrust / R / Rev) + `#fire` on `(pointer: coarse)` only. Pointer hold → `game.key` / `setFire`. Keyboard A/D/W/S/Space unchanged. |
 
 ### P1
 
@@ -118,7 +118,7 @@ Verified against this branch after the progression-loop land. Original main-bran
 | Issue | Hint |
 | --- | --- |
 | No music | `audio.ts` is SFX-only. |
-| Mobile is Fire-only | Same as P0 touch; Fire circle is the only coarse control. |
+| Mobile is Fire-only | **Fixed** with P0 touch pads (L / Thrust / R / Rev + Fire). |
 | No shop for banked credits | See P1. |
 | Vite `base` | **Done for relative deploy:** `vite.config.ts` `base: "./"`. Root hosting still works; GitHub Pages project pages should keep `base: '/re-entry/'` or `./`. |
 
@@ -167,7 +167,7 @@ Also on disk (raw / parallel captures, not the punchy edit):
 
 ### Hero beat list (`ad_hero_720p.mp4` / `recording_demo.mp4`)
 
-1. **Space** — Cinder, rocks, hull-breach (dogfight is small-scale; giant `Cinder · E` is in frame).
+1. **Space** — Cinder, rocks, hull-breach (dogfight is small-scale). Re-entry is the HTML pill only.
 2. **Planet approach** — dashed nav, HTML re-entry pill.
 3. **E cinematic** — chunky pixels, planet name, flames (~3.7s, not skipped immediately).
 4. **Cavern combat / fuel scramble** — Ember Warden lock, loot, Twin/Shield, fuel bar.
