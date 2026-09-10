@@ -58,8 +58,9 @@ function showScreen(mode: Mode | "error"): void {
   });
   overlay.hidden = mode === "play" || mode === "cine";
   hud.hidden = mode === "menu" || mode === "error" || mode === "cine";
-  const coarse = window.matchMedia("(pointer: coarse)").matches;
-  const showPads = mode === "play" && coarse;
+  // Always offer the flight keypad in play. Coarse pointers need it; desktop
+  // was hiding it behind (pointer: fine), which looked like the pads never landed.
+  const showPads = mode === "play";
   fireBtn.hidden = !showPads;
   padsEl.hidden = !showPads;
 }
@@ -237,16 +238,22 @@ function grabPlayFocus(): void {
   surface.focus({ preventScroll: true });
 }
 
+function grabPlayFocusSoon(): void {
+  grabPlayFocus();
+  // Keyboard-activated buttons can steal focus back after the click handler.
+  requestAnimationFrame(grabPlayFocus);
+}
+
 function beginRun(): void {
   unlockAudio();
   // Enter/Space on a focused Begin/Retry button fires keydown *and* click.
   // The first path already called start(); a second start() looks like a restart.
   if (game.mode === "play" || game.mode === "cine") {
-    grabPlayFocus();
+    grabPlayFocusSoon();
     return;
   }
   game.start();
-  grabPlayFocus();
+  grabPlayFocusSoon();
 }
 
 playBtn.addEventListener("click", beginRun);
@@ -254,45 +261,58 @@ retryBtn.addEventListener("click", beginRun);
 resumeBtn.addEventListener("click", () => {
   unlockAudio();
   game.resume();
-  grabPlayFocus();
+  grabPlayFocusSoon();
 });
 shopLeaveBtn.addEventListener("click", () => {
   game.closeShop();
-  grabPlayFocus();
+  grabPlayFocusSoon();
 });
 
-window.addEventListener("keydown", (event) => {
-  const active = document.activeElement;
-  const buttonArmed =
-    (event.code === "Enter" || event.code === "Space") &&
-    active instanceof HTMLButtonElement &&
-    !active.disabled;
-  if (buttonArmed) {
-    // Leave the default click to the button. game.key(Enter/Space) would start()
-    // and the following click would start() again.
-    return;
-  }
-  if (event.code === "Space" || event.code === "ArrowUp" || event.code === "ArrowDown") event.preventDefault();
-  if (event.repeat && (event.code === "Enter" || event.code === "Escape" || event.code === "KeyE")) return;
-  const playing = game.mode === "play" || game.mode === "cine";
-  if (playing && active instanceof HTMLButtonElement) {
-    active.blur();
-    if (event.code === "Space" || event.code === "Enter") event.preventDefault();
-  }
-  unlockAudio();
-  game.key(event.code, true);
-});
+function playingNow(): boolean {
+  return game.mode === "play" || game.mode === "cine";
+}
 
-window.addEventListener("keyup", (event) => {
-  game.key(event.code, false);
-});
+window.addEventListener(
+  "keydown",
+  (event) => {
+    const active = document.activeElement;
+    const playing = playingNow();
+    const buttonArmed =
+      !playing &&
+      (event.code === "Enter" || event.code === "Space") &&
+      active instanceof HTMLButtonElement &&
+      !active.disabled;
+    if (buttonArmed) {
+      // Leave the default click to the button. game.key(Enter/Space) would start()
+      // and the following click would start() again.
+      return;
+    }
+    if (event.code === "Space" || event.code === "ArrowUp" || event.code === "ArrowDown") event.preventDefault();
+    if (event.repeat && (event.code === "Enter" || event.code === "Escape" || event.code === "KeyE")) return;
+    if (playing && active instanceof HTMLButtonElement) {
+      active.blur();
+      if (event.code === "Space" || event.code === "Enter") event.preventDefault();
+    }
+    unlockAudio();
+    game.key(event.code, true);
+  },
+  true,
+);
+
+window.addEventListener(
+  "keyup",
+  (event) => {
+    game.key(event.code, false);
+  },
+  true,
+);
 
 let thrustingPointer = false;
 
 surface.addEventListener("pointerdown", (event) => {
   if (event.button !== 0) return;
   unlockAudio();
-  grabPlayFocus();
+  grabPlayFocusSoon();
   surface.setPointerCapture(event.pointerId);
   thrustingPointer = true;
   const p = canvasPoint(event);

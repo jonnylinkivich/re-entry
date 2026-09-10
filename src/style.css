@@ -135,7 +135,7 @@ body {
   pointer-events: none;
   position: absolute;
   left: 50%;
-  bottom: 28px;
+  bottom: max(148px, calc(env(safe-area-inset-bottom) + 132px));
   transform: translateX(-50%);
   padding: 14px 22px;
   border: 1px solid rgba(255, 107, 61, 0.7);
@@ -169,7 +169,7 @@ body {
   pointer-events: none;
   position: absolute;
   left: 16px;
-  bottom: 156px;
+  bottom: max(196px, calc(env(safe-area-inset-bottom) + 180px));
   width: 168px;
   display: grid;
   gap: 10px;
@@ -470,6 +470,8 @@ kbd {
   appearance: none;
   pointer-events: auto;
   margin: 0;
+  min-height: 48px;
+  padding: 12px 8px;
   border: 1px solid rgba(126, 231, 255, 0.35);
   border-radius: 16px;
   background: rgba(8, 12, 20, 0.7);
@@ -497,29 +499,6 @@ kbd {
 
 .pad-rev {
   grid-area: rev;
-}
-
-@media (pointer: fine) {
-  .fire-btn,
-  #pads {
-    display: none !important;
-  }
-}
-
-@media (pointer: coarse) {
-  #prompt {
-    bottom: max(148px, calc(env(safe-area-inset-bottom) + 132px));
-  }
-
-  #meters {
-    bottom: max(196px, calc(env(safe-area-inset-bottom) + 180px));
-  }
-}
-
-@media (pointer: coarse) and (max-width: 640px) {
-  #objective {
-    bottom: max(200px, calc(env(safe-area-inset-bottom) + 184px));
-  }
 }
 
 #combo {
@@ -574,7 +553,7 @@ kbd {
   #objective {
     max-width: calc(100% - 24px);
     top: auto;
-    bottom: 88px;
+    bottom: max(200px, calc(env(safe-area-inset-bottom) + 184px));
     font-size: 11px;
   }
 
