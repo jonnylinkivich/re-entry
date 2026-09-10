@@ -130,11 +130,20 @@ function canvasPoint(event: PointerEvent): { x: number; y: number } {
   return { x: event.clientX - rect.left, y: event.clientY - rect.top };
 }
 
+function grabPlayFocus(): void {
+  playBtn.blur();
+  retryBtn.blur();
+  resumeBtn.blur();
+  fireBtn.blur();
+  for (const pad of padsEl.querySelectorAll<HTMLButtonElement>(".pad-btn")) pad.blur();
+  window.focus();
+  surface.focus({ preventScroll: true });
+}
+
 function beginRun(): void {
   unlockAudio();
   game.start();
-  playBtn.blur();
-  retryBtn.blur();
+  grabPlayFocus();
 }
 
 playBtn.addEventListener("click", beginRun);
@@ -142,12 +151,18 @@ retryBtn.addEventListener("click", beginRun);
 resumeBtn.addEventListener("click", () => {
   unlockAudio();
   game.resume();
-  resumeBtn.blur();
+  grabPlayFocus();
 });
 
 window.addEventListener("keydown", (event) => {
   if (event.code === "Space" || event.code === "ArrowUp" || event.code === "ArrowDown") event.preventDefault();
   if (event.repeat && (event.code === "Enter" || event.code === "Escape" || event.code === "KeyE")) return;
+  const playing = game.mode === "play" || game.mode === "cine";
+  const active = document.activeElement;
+  if (playing && active instanceof HTMLButtonElement) {
+    active.blur();
+    if (event.code === "Space" || event.code === "Enter") event.preventDefault();
+  }
   unlockAudio();
   game.key(event.code, true);
 });
@@ -161,6 +176,7 @@ let thrustingPointer = false;
 surface.addEventListener("pointerdown", (event) => {
   if (event.button !== 0) return;
   unlockAudio();
+  grabPlayFocus();
   surface.setPointerCapture(event.pointerId);
   thrustingPointer = true;
   const p = canvasPoint(event);
@@ -204,10 +220,12 @@ function bindHold(
   onDown: () => void,
   onUp: () => void,
 ): void {
+  let held = false;
   const down = (event: PointerEvent) => {
     event.preventDefault();
     event.stopPropagation();
     unlockAudio();
+    held = true;
     try {
       el.setPointerCapture(event.pointerId);
     } catch {
@@ -216,10 +234,18 @@ function bindHold(
     el.blur();
     onDown();
   };
+  const up = (event: Event) => {
+    if (!held) return;
+    if (event instanceof PointerEvent && event.type === "lostpointercapture" && event.buttons !== 0) {
+      return;
+    }
+    held = false;
+    onUp();
+  };
   el.addEventListener("pointerdown", down);
-  el.addEventListener("pointerup", onUp);
-  el.addEventListener("pointercancel", onUp);
-  el.addEventListener("lostpointercapture", onUp);
+  el.addEventListener("pointerup", up);
+  el.addEventListener("pointercancel", up);
+  el.addEventListener("lostpointercapture", up);
 }
 
 bindHold(
@@ -233,8 +259,8 @@ for (const pad of padsEl.querySelectorAll<HTMLButtonElement>("[data-key]")) {
   if (!code) continue;
   bindHold(
     pad,
-    () => game.key(code, true),
-    () => game.key(code, false),
+    () => game.pad(code, true),
+    () => game.pad(code, false),
   );
 }
 
@@ -242,6 +268,7 @@ function releaseHolds(): void {
   thrustingPointer = false;
   game.clearPointer();
   game.setFire(false);
+  game.clearPads();
   for (const code of PAD_CODES) game.key(code, false);
 }
 

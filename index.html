@@ -10,7 +10,7 @@
   </head>
   <body>
     <div id="app">
-      <canvas id="game" aria-label="RE-ENTRY game field"></canvas>
+      <canvas id="game" tabindex="-1" aria-label="RE-ENTRY game field"></canvas>
       <div id="vignette" aria-hidden="true"></div>
 
       <header id="hud" hidden>
@@ -107,7 +107,7 @@
         <button type="button" class="pad-btn" data-key="KeyD" tabindex="-1" aria-label="Turn right">R</button>
         <button type="button" class="pad-btn pad-rev" data-key="KeyS" tabindex="-1" aria-label="Reverse">Rev</button>
       </div>
-      <button type="button" id="fire" class="fire-btn" hidden aria-label="Fire">Fire</button>
+      <button type="button" id="fire" class="fire-btn" hidden tabindex="-1" aria-label="Fire">Fire</button>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

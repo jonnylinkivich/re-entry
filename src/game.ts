@@ -317,6 +317,7 @@ export class Game {
   private floaters: Floater[] = [];
   private stars: Star[] = [];
   private keys = new Set<string>();
+  private pads = new Set<string>();
   private pointer: Pointer | null = null;
   private fireHeld = false;
   private queuedFire = false;
@@ -398,6 +399,20 @@ export class Game {
       else if (this.mode === "play") this.pause();
       else if (this.mode === "pause") this.resume();
     }
+  }
+
+  /** Touch-pad hold. Separate from `keys` so a pad release cannot drop a held keyboard key. */
+  pad(code: string, down: boolean): void {
+    if (down) this.pads.add(code);
+    else this.pads.delete(code);
+  }
+
+  clearPads(): void {
+    this.pads.clear();
+  }
+
+  private held(...codes: string[]): boolean {
+    return codes.some((code) => this.keys.has(code) || this.pads.has(code));
   }
 
   setPointer(sx: number, sy: number, down: boolean): void {
@@ -1150,11 +1165,11 @@ export class Game {
     ship.cooldown = Math.max(0, ship.cooldown - dt);
     ship.invuln = Math.max(0, ship.invuln - dt);
 
-    const left = this.keys.has("ArrowLeft") || this.keys.has("KeyA");
-    const right = this.keys.has("ArrowRight") || this.keys.has("KeyD");
-    const keyThrust = this.keys.has("ArrowUp") || this.keys.has("KeyW");
-    const keyReverse = this.keys.has("ArrowDown") || this.keys.has("KeyS");
-    const wantShield = this.keys.has("ShiftLeft") || this.keys.has("ShiftRight");
+    const left = this.held("ArrowLeft", "KeyA");
+    const right = this.held("ArrowRight", "KeyD");
+    const keyThrust = this.held("ArrowUp", "KeyW");
+    const keyReverse = this.held("ArrowDown", "KeyS");
+    const wantShield = this.held("ShiftLeft", "ShiftRight");
 
     if (left) ship.angle -= TURN * dt;
     if (right) ship.angle += TURN * dt;
@@ -1247,9 +1262,7 @@ export class Game {
     const wantFire =
       this.queuedFire ||
       this.fireHeld ||
-      this.keys.has("Space") ||
-      this.keys.has("KeyJ") ||
-      this.keys.has("KeyK");
+      this.held("Space", "KeyJ", "KeyK");
     this.queuedFire = false;
     if (wantFire && ship.cooldown <= 0) this.fire();
   }

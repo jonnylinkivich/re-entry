@@ -38,6 +38,10 @@ body {
   cursor: crosshair;
 }
 
+#game:focus {
+  outline: none;
+}
+
 #vignette {
   pointer-events: none;
   position: absolute;
@@ -64,8 +68,10 @@ body {
 #combo[hidden],
 #objective[hidden],
 #pads[hidden],
+#fire[hidden],
 #meters [hidden] {
   display: none !important;
+  pointer-events: none !important;
 }
 
 .hud-cluster {
@@ -332,6 +338,7 @@ kbd {
 }
 
 .fire-btn {
+  pointer-events: auto;
   position: absolute;
   right: max(18px, env(safe-area-inset-right));
   bottom: max(18px, env(safe-area-inset-bottom));
@@ -354,6 +361,7 @@ kbd {
 }
 
 #pads {
+  pointer-events: none;
   position: absolute;
   left: max(14px, env(safe-area-inset-left));
   bottom: max(18px, env(safe-area-inset-bottom));
@@ -368,6 +376,7 @@ kbd {
 
 .pad-btn {
   appearance: none;
+  pointer-events: auto;
   margin: 0;
   border: 1px solid rgba(126, 231, 255, 0.35);
   border-radius: 16px;
