@@ -384,9 +384,13 @@ let last = performance.now();
 function frame(now: number): void {
   const dt = (now - last) / 1000;
   last = now;
-  game.update(dt);
-  game.draw(gfx);
-  syncLiveHud(game.hud());
+  try {
+    game.update(dt);
+    game.draw(gfx);
+    syncLiveHud(game.hud());
+  } catch (err) {
+    console.error("RE-ENTRY frame", err);
+  }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
