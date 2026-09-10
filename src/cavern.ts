@@ -40,6 +40,7 @@ export type PlanetDef = {
   fill: string;
   stroke: string;
   deep: string;
+  /** Always 0. Caverns and space are thrust-only — no down-pull or proximity well. */
   gravity: number;
   cols: number;
   rows: number;
@@ -64,9 +65,6 @@ export const SPACE_H = 480000;
 /** Distance from a planet's surface to the opening spawn (outside the re-entry halo). */
 export const SPAWN_CLEARANCE = 2200;
 
-/** Space gravity exists only inside `radius * SPACE_WELL_MULT`. Deep space is zero-g. */
-export const SPACE_WELL_MULT = 2;
-
 export type StationDef = {
   id: string;
   name: string;
@@ -86,32 +84,6 @@ export const STATION: StationDef = {
 
 export const DOCK_RANGE = 420;
 
-const WELL_ACCEL = { ax: 0, ay: 0 };
-
-export function spaceWellAccel(
-  x: number,
-  y: number,
-): { ax: number; ay: number } {
-  let ax = 0;
-  let ay = 0;
-  for (const planet of PLANETS) {
-    const dx = planet.x - x;
-    const dy = planet.y - y;
-    const well = planet.radius * SPACE_WELL_MULT;
-    const well2 = well * well;
-    const d2 = dx * dx + dy * dy;
-    if (d2 >= well2 || d2 < 64) continue;
-    const dist = Math.sqrt(d2);
-    const falloff = 1 - dist / well;
-    const pull = planet.gravity * 0.55 * falloff;
-    ax += (dx / dist) * pull;
-    ay += (dy / dist) * pull;
-  }
-  WELL_ACCEL.ax = ax;
-  WELL_ACCEL.ay = ay;
-  return WELL_ACCEL;
-}
-
 export const PLANETS: PlanetDef[] = [
   {
     id: "cinder",
@@ -124,7 +96,7 @@ export const PLANETS: PlanetDef[] = [
     fill: "#3a1610",
     stroke: "#e06030",
     deep: "#140806",
-    gravity: 220,
+    gravity: 0,
     cols: 200,
     rows: 150,
     tile: 36,
@@ -146,7 +118,7 @@ export const PLANETS: PlanetDef[] = [
     fill: "#102436",
     stroke: "#7ec8e8",
     deep: "#071018",
-    gravity: 140,
+    gravity: 0,
     cols: 220,
     rows: 140,
     tile: 36,
@@ -168,7 +140,7 @@ export const PLANETS: PlanetDef[] = [
     fill: "#102414",
     stroke: "#62c56e",
     deep: "#07140c",
-    gravity: 180,
+    gravity: 0,
     cols: 210,
     rows: 160,
     tile: 36,
@@ -190,7 +162,7 @@ export const PLANETS: PlanetDef[] = [
     fill: "#1a1028",
     stroke: "#b07cff",
     deep: "#0c0814",
-    gravity: 200,
+    gravity: 0,
     cols: 240,
     rows: 170,
     tile: 36,
@@ -212,7 +184,7 @@ export const PLANETS: PlanetDef[] = [
     fill: "#2a120c",
     stroke: "#e07038",
     deep: "#120806",
-    gravity: 200,
+    gravity: 0,
     cols: 200,
     rows: 155,
     tile: 36,
@@ -234,7 +206,7 @@ export const PLANETS: PlanetDef[] = [
     fill: "#0c2428",
     stroke: "#3ec8c8",
     deep: "#061418",
-    gravity: 130,
+    gravity: 0,
     cols: 230,
     rows: 145,
     tile: 36,
@@ -256,7 +228,7 @@ export const PLANETS: PlanetDef[] = [
     fill: "#1c2410",
     stroke: "#c6e04a",
     deep: "#0c1406",
-    gravity: 210,
+    gravity: 0,
     cols: 215,
     rows: 165,
     tile: 36,
@@ -278,7 +250,7 @@ export const PLANETS: PlanetDef[] = [
     fill: "#241018",
     stroke: "#ff5ec8",
     deep: "#14080e",
-    gravity: 190,
+    gravity: 0,
     cols: 250,
     rows: 175,
     tile: 36,

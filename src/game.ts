@@ -30,7 +30,6 @@ import {
   generateCavern,
   inExitShaft,
   moveAgainst,
-  spaceWellAccel,
 } from "./cavern.ts";
 import { ReentryCine, RescueCine } from "./cinematic.ts";
 import {
@@ -226,7 +225,7 @@ const ZOOM_MAX = 3.6;
 const REENTRY_RANGE = 520;
 /** Away-spawns must stay this far from the ship (world clamp used to drop rocks on you). */
 const ROCK_CLEAR_R = 1800;
-/** Lethal only for a *new* wall slam — not gravity grinding the floor. */
+/** Lethal only for a *new* wall slam — not grinding the same surface. */
 const WALL_SLAM = 420;
 const RESCUE_FUEL = 24;
 const TRANSIT_LOCK = 2.4;
@@ -1589,14 +1588,6 @@ export class Game {
       this.fuel = Math.max(0, this.fuel - FUEL_IDLE * dt);
     }
 
-    if (this.zone === "cavern" && this.planet) {
-      ship.vy += this.planet.gravity * dt;
-    } else if (this.zone === "space") {
-      const well = spaceWellAccel(ship.x, ship.y);
-      ship.vx += well.ax * dt;
-      ship.vy += well.ay * dt;
-    }
-
     const maxSpeed = this.zone === "cavern" ? MAX_SPEED_CAVE : MAX_SPEED_SPACE;
     const speed = Math.hypot(ship.vx, ship.vy);
     if (speed > maxSpeed) {
@@ -1831,7 +1822,6 @@ export class Game {
   private stepRocks(dt: number): void {
     for (const rock of this.rocks) {
       if (this.cavern) {
-        rock.vy += (this.planet?.gravity ?? 0) * 0.18 * dt;
         const moved = moveAgainst(
           this.cavern,
           rock.x,

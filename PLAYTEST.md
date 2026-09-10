@@ -82,13 +82,13 @@ Hold `W`/`A`/`D` — tapping thrust does nothing useful. Canvas focus is grabbed
 ## Loop checks
 
 1. **Menu → space**  
-   Begin re-entry. You spawn **near Cinder but outside** the re-entry halo — no `Re-enter Cinder — E` on frame 1. HUD shows energy bar, objective **Defeat Ember Warden**. Nav arrow + distance still point at Cinder. Zoom out: planets are sparse dots on a 640k × 480k map. Radar shows eight planet discs plus Hab-7’s cyan diamond (**H**). Fly away — **no gravity** in open space (a short well only when hugging a planet, inside `radius * 2`).
+   Begin re-entry. You spawn **near Cinder but outside** the re-entry halo — no `Re-enter Cinder — E` on frame 1. HUD shows energy bar, objective **Defeat Ember Warden**. Nav arrow + distance still point at Cinder. Zoom out: planets are sparse dots on a 640k × 480k map. Radar shows eight planet discs plus Hab-7’s cyan diamond (**H**). Fly away — **no gravity** in open space (no proximity well).
 
 2. **Gate prompt**  
    Long travel to Rime (empty space). Without a key, up close: `RIME LOCKED — need Cinder Key`. `E` must not start a dive. Same style for later worlds (`ASHEN LOCKED — need Vesper Key`, etc.).
 
 3. **Cinder dive**  
-   Approach Cinder, `E` (or click). 8-bit re-entry cine, then cavern. Fuel bar appears. Gravity is climbable with `W` (Cinder gravity 220 vs thrust 360). Hold `Shift`: shield ring, energy drains. Collect **O** ore (cargo HUD ticks up, credits do not bank yet) and **F** fuel / **E** energy.
+   Approach Cinder, `E` (or click). 8-bit re-entry cine, then cavern. Fuel bar appears. Caverns are thrust-only (no down-pull). Hold `Shift`: shield ring, energy drains. Collect **O** ore (cargo HUD ticks up, credits do not bank yet) and **F** fuel / **E** energy.
 
 4. **Boss**  
    Follow the dashed nav line / radar pip / edge marker to **Ember Warden** (lower-right chamber). Shoot until it dies. Banner grants **Cinder Key**; tank chip grows. Re-visiting Cinder must not respawn the boss.
@@ -138,7 +138,7 @@ Recorded against the running Vite server on `:47331` (`?playtest=1`) while the p
 
 ### Cavern
 
-- Gravity is climbable now (Cinder **220** vs thrust **360**). Fuel is the killer: tanks drain fast, **STRANDED — R RESCUE BEAM (15 CR)** is a strong moment.
+- Caverns are thrust-only (no gravity). Fuel is the killer: tanks drain fast, **STRANDED — R RESCUE BEAM (15 CR)** is a strong moment.
 - Ember Warden chamber, dashed lock, radar pip, loot (ore / fuel / weapons), Twin/Shield chips, combo `x3` all showed up in captures.
 - Climb/launch is possible from the entry shaft (`LAUNCH TO SPACE — E (BANK CARGO)`). Hero includes an **OPEN SPACE** return after a shaft `E`. Full “fly the whole shaft on a dry tank” is still easy to fail — rescue is the intended out.
 - `populateCavern` now stores a `diveHolds` snapshot so loot is not restacked every visit (fixed vs original P0).
@@ -199,7 +199,7 @@ Verified against this branch after the progression-loop land. Original main-bran
 
 ### Fixed since original main playtest (do not re-open)
 
-- Cinder gravity 460 > thrust 360 → **220 / 360** (`cavern.ts` `PLANETS`, `game.ts` `THRUST`).
+- Cinder gravity 460 > thrust 360 → **zero gravity** (`cavern.ts` `PLANETS` all `0`; no `ship.vy += gravity` / space well).
 - Death banner “RE-ENTRY” → **HULL BREACH**.
 - `setMuted` unused → **M** + `toggleMuted`.
 - `localStorage` `drift-*` → `reentry-save` / `reentry-highscore` with drift fallback (`meta.ts`).
