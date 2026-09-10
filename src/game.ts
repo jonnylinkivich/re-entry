@@ -396,6 +396,7 @@ export class Game {
   private runUnlock = false;
   private wallGrind = false;
   private transitLock = 0;
+  private startAt = -1e9;
 
   constructor() {
     this.meta = loadMeta();
@@ -443,7 +444,10 @@ export class Game {
       saveMeta(this.meta);
       this.announce(this.meta.muted ? "MUTED" : "SOUND ON");
     }
-    if (code === "Space" && this.mode === "cine") this.skipCine();
+    if (code === "Space") {
+      if (this.mode === "cine") this.skipCine();
+      else if (this.mode === "menu" || this.mode === "over") this.start();
+    }
     if (code === "Escape" || code === "KeyP") {
       if (this.mode === "cine") this.skipCine();
       else if (this.mode === "shop") this.closeShop();
@@ -506,6 +510,9 @@ export class Game {
   }
 
   start(): void {
+    const now = performance.now();
+    if ((this.mode === "play" || this.mode === "cine") && now - this.startAt < 500) return;
+    this.startAt = now;
     this.mode = "play";
     this.zone = "space";
     this.planet = null;
@@ -1105,10 +1112,11 @@ export class Game {
     const self = this;
     Object.assign(window, {
       reentryWarpStation: () => {
-        self.ship.x = STATION.x + STATION.radius + 180;
-        self.ship.y = STATION.y;
+        self.ship.x = STATION.x;
+        self.ship.y = STATION.y + STATION.radius + 160;
         self.ship.vx = 0;
         self.ship.vy = 0;
+        self.ship.angle = -Math.PI / 2;
         self.snapCam();
       },
     });

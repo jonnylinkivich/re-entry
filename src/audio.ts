@@ -8,6 +8,8 @@ function audio(): AudioContext | null {
 }
 
 export function unlockAudio(): void {
+  if (muted) return;
+  if (ctx?.state === "running") return;
   const a = audio();
   if (a && a.state === "suspended") void a.resume();
 }

@@ -239,6 +239,12 @@ function grabPlayFocus(): void {
 
 function beginRun(): void {
   unlockAudio();
+  // Enter/Space on a focused Begin/Retry button fires keydown *and* click.
+  // The first path already called start(); a second start() looks like a restart.
+  if (game.mode === "play" || game.mode === "cine") {
+    grabPlayFocus();
+    return;
+  }
   game.start();
   grabPlayFocus();
 }
@@ -256,10 +262,19 @@ shopLeaveBtn.addEventListener("click", () => {
 });
 
 window.addEventListener("keydown", (event) => {
+  const active = document.activeElement;
+  const buttonArmed =
+    (event.code === "Enter" || event.code === "Space") &&
+    active instanceof HTMLButtonElement &&
+    !active.disabled;
+  if (buttonArmed) {
+    // Leave the default click to the button. game.key(Enter/Space) would start()
+    // and the following click would start() again.
+    return;
+  }
   if (event.code === "Space" || event.code === "ArrowUp" || event.code === "ArrowDown") event.preventDefault();
   if (event.repeat && (event.code === "Enter" || event.code === "Escape" || event.code === "KeyE")) return;
   const playing = game.mode === "play" || game.mode === "cine";
-  const active = document.activeElement;
   if (playing && active instanceof HTMLButtonElement) {
     active.blur();
     if (event.code === "Space" || event.code === "Enter") event.preventDefault();
@@ -380,6 +395,10 @@ fireBtn.addEventListener("contextmenu", (event) => event.preventDefault());
 window.addEventListener("resize", fit);
 fit();
 
+type BootWin = Window & { __reentryRaf?: number };
+const boot = window as BootWin;
+if (boot.__reentryRaf) cancelAnimationFrame(boot.__reentryRaf);
+
 let last = performance.now();
 function frame(now: number): void {
   const dt = (now - last) / 1000;
@@ -391,6 +410,6 @@ function frame(now: number): void {
   } catch (err) {
     console.error("RE-ENTRY frame", err);
   }
-  requestAnimationFrame(frame);
+  boot.__reentryRaf = requestAnimationFrame(frame);
 }
-requestAnimationFrame(frame);
+boot.__reentryRaf = requestAnimationFrame(frame);
