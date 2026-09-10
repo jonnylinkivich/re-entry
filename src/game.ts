@@ -224,6 +224,12 @@ const ZOOM_MIN = 0.015;
 const ZOOM_MAX = 3.6;
 /** Halo from the planet surface. `nearestPlanet` adds `radius`, so the prompt is local. */
 const REENTRY_RANGE = 520;
+/** Away-spawns must stay this far from the ship (world clamp used to drop rocks on you). */
+const ROCK_CLEAR_R = 1800;
+/** Lethal only for a *new* wall slam — not gravity grinding the floor. */
+const WALL_SLAM = 420;
+const RESCUE_FUEL = 24;
+const TRANSIT_LOCK = 2.4;
 const ROCK_STROKES = [
   "#7ee7ff",
   "#ffb36b",
@@ -388,6 +394,8 @@ export class Game {
   private meta: MetaState;
   private runBoost = false;
   private runUnlock = false;
+  private wallGrind = false;
+  private transitLock = 0;
 
   constructor() {
     this.meta = loadMeta();
@@ -506,6 +514,8 @@ export class Game {
     this.cine = null;
     this.cineKind = null;
     this.pendingPlanet = null;
+    this.wallGrind = false;
+    this.transitLock = 0;
     this.score = 0;
     this.lives = MAX_LIVES;
     this.wave = 1;
@@ -544,6 +554,7 @@ export class Game {
     this.seed = (Math.random() * 1e9) | 0;
     this.snapCam();
     this.spawnWave(this.wave);
+    this.clearHazardsNearShip(ROCK_CLEAR_R);
     this.announce("CINDER AHEAD");
     sfxWave();
     this.bindPlaytestHooks();
@@ -671,6 +682,8 @@ export class Game {
 
   update(dt: number): void {
     const t = clamp(dt, 0, 0.05);
+    this.transitLock = Math.max(0, this.transitLock - t);
+    if (!this.motionOk()) this.sanitizeView();
     this.fpsEma = this.fpsEma * 0.9 + (1 / Math.max(t, 1 / 240)) * 0.1;
     this.shake = Math.max(0, this.shake - t * 22);
     if (this.bannerLife > 0) {
@@ -723,6 +736,8 @@ export class Game {
   }
 
   draw(ctx: CanvasRenderingContext2D): void {
+    if (!this.motionOk()) this.sanitizeView();
+    if (!this.motionOk()) return;
     if (this.cine) {
       this.cine.draw(ctx, this.w, this.h);
       return;
@@ -930,6 +945,81 @@ export class Game {
     };
   }
 
+  private motionOk(): boolean {
+    return (
+      Number.isFinite(this.ship.x) &&
+      Number.isFinite(this.ship.y) &&
+      Number.isFinite(this.ship.vx) &&
+      Number.isFinite(this.ship.vy) &&
+      Number.isFinite(this.camX) &&
+      Number.isFinite(this.camY) &&
+      Number.isFinite(this.zoom) &&
+      this.zoom > 0
+    );
+  }
+
+  private sanitizeView(): void {
+    const ship = this.ship;
+    if (!Number.isFinite(ship.x) || !Number.isFinite(ship.y)) {
+      if (this.cavern) {
+        ship.x = this.cavern.spawnX;
+        ship.y = this.cavern.spawnY;
+      } else {
+        const home = PLANETS[0] as PlanetDef;
+        ship.x = home.x + home.radius + SPAWN_CLEARANCE;
+        ship.y = home.y;
+      }
+    }
+    if (!Number.isFinite(ship.vx)) ship.vx = 0;
+    if (!Number.isFinite(ship.vy)) ship.vy = 0;
+    if (!Number.isFinite(ship.angle)) ship.angle = -Math.PI / 2;
+    if (!Number.isFinite(this.zoomWanted) || this.zoomWanted < ZOOM_MIN) this.zoomWanted = 1;
+    if (!Number.isFinite(this.zoom) || this.zoom < ZOOM_MIN) {
+      this.zoom = clamp(this.zoomWanted, ZOOM_MIN, ZOOM_MAX);
+    }
+    this.zoom = clamp(this.zoom, ZOOM_MIN, ZOOM_MAX);
+    this.snapCam();
+    if (!Number.isFinite(this.camX)) this.camX = 0;
+    if (!Number.isFinite(this.camY)) this.camY = 0;
+  }
+
+  private unstickShip(): void {
+    if (!this.cavern) return;
+    const ship = this.ship;
+    if (!circleHitsSolid(this.cavern, ship.x, ship.y, SHIP_R + 1)) return;
+    const t = this.cavern.tile;
+    for (let ring = 1; ring <= 14; ring++) {
+      for (let i = 0; i < 16; i++) {
+        const ang = (i / 16) * Math.PI * 2;
+        const x = ship.x + Math.cos(ang) * ring * t;
+        const y = ship.y + Math.sin(ang) * ring * t;
+        if (!circleHitsSolid(this.cavern, x, y, SHIP_R + 2)) {
+          ship.x = x;
+          ship.y = y;
+          ship.vx = 0;
+          ship.vy = 0;
+          return;
+        }
+      }
+    }
+    ship.x = this.cavern.spawnX;
+    ship.y = this.cavern.spawnY;
+    ship.vx = 0;
+    ship.vy = 0;
+  }
+
+  private clearHazardsNearShip(radius: number): void {
+    const r2 = radius * radius;
+    this.rocks = this.rocks.filter((rock) => dist2(rock.x, rock.y, this.ship.x, this.ship.y) > r2);
+  }
+
+  private settleShip(): void {
+    this.unstickShip();
+    this.clearHazardsNearShip(this.zone === "cavern" ? 220 : 280);
+    this.wallGrind = false;
+    this.snapCam();
+  }
+
   private viewW(): number {
     return this.w / this.zoom;
   }
@@ -948,8 +1038,10 @@ export class Game {
   }
 
   private followCam(dt: number): void {
+    if (!Number.isFinite(this.zoomWanted)) this.zoomWanted = 1;
     this.zoom += (this.zoomWanted - this.zoom) * (1 - Math.exp(-14 * dt));
     this.zoom = clamp(this.zoom, ZOOM_MIN, ZOOM_MAX);
+    if (!Number.isFinite(this.zoom) || this.zoom <= 0) this.zoom = ZOOM_MIN;
     const vw = this.w / this.zoom;
     const vh = this.h / this.zoom;
     const ww = this.worldW();
@@ -1059,6 +1151,7 @@ export class Game {
     let next = "";
     if (this.zone === "space") {
       if (this.nearStation()) next = "Dock station — E";
+      else if (this.transitLock > 0) next = "";
       else {
         const planet = this.nearestPlanet(REENTRY_RANGE);
         if (planet) {
@@ -1119,6 +1212,7 @@ export class Game {
   }
 
   private beginReentry(planet: PlanetDef): void {
+    if (this.transitLock > 0) return;
     if (!this.isUnlocked(planet.id)) {
       const need = neededKey(planet.id);
       this.announce(need ? lockPrompt(planet.name, need) : `${planet.name.toUpperCase()} LOCKED`);
@@ -1154,6 +1248,8 @@ export class Game {
     this.cineKind = null;
     this.pendingPlanet = null;
     this.mode = "play";
+    this.keys.delete("KeyE");
+    this.keys.delete("Enter");
     if (kind === "rescue") this.completeRescue();
     else if (planet) this.enterPlanet(planet);
     else this.markHud();
@@ -1187,7 +1283,7 @@ export class Game {
     this.diveCargo = 0;
     this.fuel = this.tankMax();
     this.ship = this.freshShip(cavern.spawnX, cavern.spawnY);
-    this.ship.invuln = 1.4;
+    this.settleShip();
     for (const pet of this.pets) {
       pet.x = this.ship.x - 24;
       pet.y = this.ship.y + 10;
@@ -1235,14 +1331,16 @@ export class Game {
         (hold?.y ?? planet.y) - planet.y,
         (hold?.x ?? planet.x) - planet.x,
       );
-      x = planet.x + Math.cos(ang) * (planet.radius + 120);
-      y = planet.y + Math.sin(ang) * (planet.radius + 120);
+      const lift = planet.radius + SPAWN_CLEARANCE;
+      x = clamp(planet.x + Math.cos(ang) * lift, 80, SPACE_W - 80);
+      y = clamp(planet.y + Math.sin(ang) * lift, 80, SPACE_H - 80);
     } else if (hold) {
       x = hold.x;
       y = hold.y;
     }
     this.ship = this.freshShip(x, y);
-    this.ship.invuln = 1.2;
+    this.transitLock = Math.max(this.transitLock, TRANSIT_LOCK);
+    this.settleShip();
     for (const pet of this.pets) {
       pet.x = this.ship.x - 20;
       pet.y = this.ship.y;
@@ -1257,6 +1355,7 @@ export class Game {
     const pods = emptySpots(cavern, planet.pods, planet.seed + 17, 20);
     for (const spot of pods) {
       if (this.nearBoss(spot.x, spot.y, cavern, 90)) continue;
+      if (dist2(spot.x, spot.y, cavern.spawnX, cavern.spawnY) < 240 * 240) continue;
       this.spawnRock(1 + (this.seed % 2), {
         x: spot.x,
         y: spot.y,
@@ -1330,6 +1429,8 @@ export class Game {
     this.meta.credits -= fee;
     this.credits = this.meta.credits;
     saveMeta(this.meta);
+    this.fuel = Math.max(this.fuel, Math.min(RESCUE_FUEL, this.tankMax()));
+    this.transitLock = TRANSIT_LOCK;
     this.exitPlanet(null, `RESCUE +${banked} CR  (−${fee} fee)`);
   }
 
@@ -1365,15 +1466,28 @@ export class Game {
     let x = opts.x ?? radius + rand() * (ww - radius * 2);
     let y = opts.y ?? radius + rand() * (wh - radius * 2);
     if (opts.away) {
-      for (let attempt = 0; attempt < 10; attempt++) {
+      let placed = false;
+      const clear2 = ROCK_CLEAR_R * ROCK_CLEAR_R;
+      for (let attempt = 0; attempt < 16; attempt++) {
         const ang = rand() * Math.PI * 2;
-        const dist = 900 + rand() * 2200;
+        const dist = ROCK_CLEAR_R + rand() * 2400;
         x = this.ship.x + Math.cos(ang) * dist;
         y = this.ship.y + Math.sin(ang) * dist;
         x = clamp(x, radius + 40, ww - radius - 40);
         y = clamp(y, radius + 40, wh - radius - 40);
-        if (dist2(x, y, this.ship.x, this.ship.y) > 700 * 700) break;
+        if (dist2(x, y, this.ship.x, this.ship.y) >= clear2) {
+          placed = true;
+          break;
+        }
       }
+      if (!placed) return;
+    } else if (
+      opts.x != null &&
+      opts.y != null &&
+      this.zone === "space" &&
+      dist2(x, y, this.ship.x, this.ship.y) < 90 * 90
+    ) {
+      return;
     }
     if (this.cavern && circleHitsSolid(this.cavern, x, y, radius)) return;
     const speed = (22 + rand() * 34 + (4 - size) * 16) * (0.85 + this.wave * 0.04);
@@ -1486,6 +1600,9 @@ export class Game {
     ship.vy *= Math.max(0, 1 - drag * dt);
 
     if (this.cavern) {
+      const preVx = ship.vx;
+      const preVy = ship.vy;
+      const step = Math.max(dt, 1 / 240);
       const moved = moveAgainst(
         this.cavern,
         ship.x,
@@ -1498,10 +1615,17 @@ export class Game {
       ship.x = moved.x;
       ship.y = moved.y;
       if (moved.hit) {
-        const impact = Math.hypot(ship.vx, ship.vy);
-        ship.vx = moved.vx / dt;
-        ship.vy = moved.vy / dt;
-        if (impact > 340 && ship.invuln <= 0) this.crashHit();
+        ship.vx = moved.vx / step;
+        ship.vy = moved.vy / step;
+        if (!Number.isFinite(ship.vx)) ship.vx = 0;
+        if (!Number.isFinite(ship.vy)) ship.vy = 0;
+        const impact = Math.hypot(preVx, preVy);
+        const gravityFloor = preVy > 80 && preVy * preVy >= preVx * preVx;
+        const fresh = !this.wallGrind;
+        this.wallGrind = true;
+        if (fresh && impact > WALL_SLAM && !gravityFloor && ship.invuln <= 0) this.crashHit();
+      } else {
+        this.wallGrind = false;
       }
     } else {
       const next = bounce(
@@ -1613,8 +1737,8 @@ export class Game {
         const moved = moveAgainst(this.cavern, pet.x, pet.y, pet.vx * dt, pet.vy * dt, PET_R, 0.2);
         pet.x = moved.x;
         pet.y = moved.y;
-        pet.vx = moved.hit ? moved.vx / dt : pet.vx;
-        pet.vy = moved.hit ? moved.vy / dt : pet.vy;
+        pet.vx = moved.hit ? moved.vx / Math.max(dt, 1 / 240) : pet.vx;
+        pet.vy = moved.hit ? moved.vy / Math.max(dt, 1 / 240) : pet.vy;
       } else {
         const moved = bounce(
           pet.x + pet.vx * dt,
@@ -1711,8 +1835,8 @@ export class Game {
         );
         rock.x = moved.x;
         rock.y = moved.y;
-        rock.vx = moved.hit ? moved.vx / dt : rock.vx;
-        rock.vy = moved.hit ? moved.vy / dt : rock.vy;
+        rock.vx = moved.hit ? moved.vx / Math.max(dt, 1 / 240) : rock.vx;
+        rock.vy = moved.hit ? moved.vy / Math.max(dt, 1 / 240) : rock.vy;
       } else {
         const moved = bounce(
           rock.x + rock.vx * dt,
@@ -2094,6 +2218,7 @@ export class Game {
     } else {
       this.ship = this.freshShip(ship.x, ship.y);
     }
+    this.settleShip();
     this.announce("HULL BREACH");
   }
 
@@ -2101,8 +2226,9 @@ export class Game {
     if (this.mode !== "play" || this.zone !== "space") return;
     if (this.rocks.length > 0) return;
     this.wave += 1;
-    this.ship.invuln = Math.max(this.ship.invuln, 1.2);
+    this.ship.invuln = Math.max(this.ship.invuln, 2);
     this.spawnWave(this.wave);
+    this.clearHazardsNearShip(ROCK_CLEAR_R);
     this.announce(`WAVE ${this.wave}`);
     sfxWave();
     this.markHud();
