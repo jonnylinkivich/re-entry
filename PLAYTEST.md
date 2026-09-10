@@ -1,8 +1,73 @@
 # RE-ENTRY playtest
 
-Build first (`npm run build`). Dev server: `npm run dev` → `http://localhost:47331`.
+Build first (`npm run build`). **Production (what players get):** `npm run preview` → `http://localhost:47331` (tmux `re-entry-preview` / `re-entry-dev`). Dev: `npm run dev` on a free port — do not steal 47331 from preview during a load test.
 
-Optional query flags (run-local, not required for a real playthrough):
+Hold `W`/`A`/`D` — tapping thrust does nothing useful. After **Begin re-entry**, keys register without an extra canvas click (`ab18e9e` + Enter/Space no longer double-`start()`).
+
+---
+
+## Load / Restart (production playtest, 2026-09-10)
+
+Nick: load felt slow and the game “restarts.” Timed against a **production** `vite preview` on `:47331` (not Vite HMR). `npm run build` **green** (`tsc && vite build`, wall ~1.1–1.3s).
+
+### Timings
+
+| Step | Time | Notes |
+| --- | --- | --- |
+| `npm run build` | **1.11–1.33s** wall | Vite transform 84–212ms |
+| `dist/` JS | **73.4 kb** (gzip **23.8 kb**) | CSS 7.9 kb / gzip 2.4 kb. Not a 200× inlined map — caverns generate on dive (`Uint8Array`). Was ~40kb on main; growth is bosses / shop / 8 worlds, still tiny. |
+| Cold preview → interactive **menu** | **64 ms** | Headless Chrome, cache disabled. `loadEvent` 45ms. HTML TTFB ~7ms. |
+| Begin click → first play frame | **57 ms** | Overlay hidden, HUD, ship, `SPACE · W1`, `CINDER AHEAD`. |
+| Cold `npm run dev` → “ready” | **152 ms** (Vite) | Throwaway `:47332` first `game.ts` transform **18 ms** / 252 kb. Process start is not the slowness. |
+| Favicon / SW | favicon **200** 445 B | **No service worker.** `navigator.serviceWorker.controller` = none. |
+
+### What “restart” was
+
+**Real, production-path (fixed in `2536ac0`):** Enter or Space on the focused **Begin re-entry** button fired `keydown` → `game.start()` **and** the button `click` → `beginRun()` → `start()` again. The run spawned, then immediately reset (new rocks, second `CINDER AHEAD`, `sfxWave` twice). That is a soft reboot, not a document reload.
+
+**Real, DEV-only (not a game bug):** Shared `:47331` Vite **dev** HMR. While sibling agents saved `src/game.ts`, the pane logged `page reload src/game.ts (x2)`. Full document reload, Vite overlay, websocket drop. Feels like the game “restarts.” Preview has no HMR. **Leave preview on 47331** so Nick is not sitting on a live-reloading dev server.
+
+**Not reproduced on production preview:**
+
+- Multi-reload / 404 loop (`base: "./"` assets `200`, JS 73 kb `text/javascript`)
+- Vite overlay (prod HTML has no `/@vite/client`)
+- Save wipe (`reentry-save` / high score 7500 survived the cavern pass)
+- Auto re-entry cine on spawn (halo still outside `SPAWN_CLEARANCE`)
+- Death → retry loop / wall slam every 2s
+- Double canvas/audio boot after the rAF cancel + `start()` 500ms guard
+- `localStorage` every frame (`saveMeta` on mute / bank / shop only)
+- `fit()` resize loop (`overflow: hidden`, overlay is position absolute)
+
+`6c4df38` already keeps `requestAnimationFrame` alive if one `update`/`draw` throws (freeze used to look like a dead reboot).
+
+### Human pass (preview, ~30s recorded + cavern still)
+
+Menu → Enter Begin (single start) → hold W toward Cinder → E cine ~1–2s (`RE-ENTRY` / `CINDER`, scanlines) → cavern (fuel/energy, Ember Warden lock, `LAUNCH TO SPACE — E`). Keys worked without a canvas click. Space dogfight still reads small (P1). Touch pads not exercised (`pointer: fine`).
+
+### Artifacts
+
+| File | What |
+| --- | --- |
+| `/opt/cursor/artifacts/load_and_first_minute.mp4` | Cold menu → Begin → space → cine → cavern (~30s, 1920×1200) |
+| `/opt/cursor/artifacts/playtest_cold_menu.png` | Production menu + Begin |
+| `/opt/cursor/artifacts/playtest_space.png` | Ship + Cinder + HUD after Begin |
+| `/opt/cursor/artifacts/playtest_cine.png` | 8-bit RE-ENTRY / CINDER |
+| `/opt/cursor/artifacts/playtest_cavern.png` | Cinder cavern + launch prompt |
+
+### Code
+
+Fixed on this branch (do not revert map/station/perf/crash-loop work):
+
+- `beginRun` no-ops if already `play`/`cine`; Enter/Space on a focused button does **not** also call `game.key`
+- `start()` ignores a second call within 500ms while already playing
+- Cancel a leftover `requestAnimationFrame` if the module evaluates twice (HMR)
+- `unlockAudio` returns immediately when the context is already `running`
+
+---
+
+## Optional query flags
+
+Run-local, not required for a real playthrough:
 
 - `?playtest=1` — larger fuel/energy for the run, at least 80 credits so Hab-7 has something to sell; also exposes `reentryWarpStation()` in the console
 - `?unlock=1` — treat all eight planet keys as owned so later worlds open
@@ -12,7 +77,7 @@ Optional query flags (run-local, not required for a real playthrough):
 
 `A`/`D` turn · `W`/`S` thrust · `Space` shoot · `E` re-enter/launch/dock · `Shift` shield · `R` rescue when stranded · `Esc` pause / close shop · `M` mute
 
-Hold `W`/`A`/`D` — tapping thrust does nothing useful. Click the canvas after **Begin re-entry** so keys register.
+Hold `W`/`A`/`D` — tapping thrust does nothing useful. Canvas focus is grabbed on Begin — no extra click needed.
 
 ## Loop checks
 
@@ -146,7 +211,7 @@ Verified against this branch after the progression-loop land. Original main-bran
 
 ## Build / hosting
 
-- `npm run build` (`tsc` + vite) was **clean on main** (dist JS ~40kb) and the sibling agent reports it **passed on this branch**.
+- `npm run build` (`tsc` + vite) **passed** on this branch after the load/restart pass. `dist` JS **73.4 kb** (gzip 23.8 kb); CSS 7.9 kb. Main was ~40kb — still a small static payload.
 - Static hosting: `base: "./"` in `vite.config.ts` — relative asset URLs. Root deploy works. GitHub Pages **project** site still needs `base: '/re-entry/'` if the app is not served from domain root.
 
 ---
