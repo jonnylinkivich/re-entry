@@ -5,7 +5,7 @@ Build first (`npm run build`). Dev server: `npm run dev` → `http://localhost:4
 Optional query flags (run-local, not required for a real playthrough):
 
 - `?playtest=1` — larger fuel/energy for the run, at least 40 credits so the rescue fee is payable
-- `?unlock=1` — treat Cinder/Rime/Mycel keys as owned so later planets open
+- `?unlock=1` — treat Cinder/Rime/Mycel/Vesper keys as owned so Ashen opens (later worlds still gated)
 - Combine: `http://localhost:47331/?playtest=1`
 
 ## Controls (must still work)
@@ -17,10 +17,10 @@ Hold `W`/`A`/`D` — tapping thrust does nothing useful. Click the canvas after 
 ## Loop checks
 
 1. **Menu → space**  
-   Begin re-entry. HUD shows energy bar, objective **Defeat Ember Warden**, Cinder unlocked. Rime/Mycel/Vesper read **LOCKED** up close.
+   Begin re-entry. You spawn **near Cinder but outside** the re-entry halo — no `Re-enter Cinder — E` on frame 1. HUD shows energy bar, objective **Defeat Ember Warden**. Nav arrow + distance still point at Cinder. Zoom out: planets are sparse dots on a 128k × 96k map. Fly away — **no gravity** in open space (a short well only when hugging a planet, inside `radius * 2`).
 
 2. **Gate prompt**  
-   Fly toward Rime without a key. Prompt: `RIME LOCKED — need Cinder Key`. `E` must not start a dive.
+   Long travel to Rime (empty space). Without a key, up close: `RIME LOCKED — need Cinder Key`. `E` must not start a dive. Same style for later worlds (`ASHEN LOCKED — need Vesper Key`, etc.).
 
 3. **Cinder dive**  
    Approach Cinder, `E` (or click). 8-bit re-entry cine, then cavern. Fuel bar appears. Gravity is climbable with `W` (Cinder gravity 220 vs thrust 360). Hold `Shift`: shield ring, energy drains. Collect **O** ore (cargo HUD ticks up, credits do not bank yet) and **F** fuel / **E** energy.
@@ -34,13 +34,20 @@ Hold `W`/`A`/`D` — tapping thrust does nothing useful. Click the canvas after 
    - A hit at fuel 0 auto-rescues instead of hull-breach. A hit with fuel remaining still says **HULL BREACH** (not RE-ENTRY).
 
 6. **Next planets**  
-   After Cinder Key, Rime opens. Repeat: Frost Crown → Rime Key + 75% salvage. Sporeheart → Mycel Key + 100% salvage. Night Veil is the finale.
+   After Cinder Key, Rime opens. Repeat: Frost Crown → Rime Key + 75% salvage. Sporeheart → Mycel Key + 100% salvage. Night Veil → Vesper Key → **Ashen**. Then Ash Colossus → Brine, Tide Serpent → Thorn, Bramble King → Helix, Coil Warden is the finale. Original four-world loop still verifies the same way.
 
 7. **Persist**  
    Refresh. Credits, keys, tank, salvage, high score remain (`reentry-save`). Guns reset between full runs but persist space ↔ planet inside one run.
 
 8. **Soft-lock**  
    Locked planet always names the missing key. Re-entry is the HTML `#prompt` only — no canvas `{name} · E`. Combo `xN` sits under the top HUD.
+
+9. **Empty space / large map**  
+   Map is **128000 × 96000**. Eight planets: Cinder → Rime → Mycel → Vesper → Ashen → Brine → Thorn → Helix (each needs the previous key).  
+   - Begin: no re-entry prompt.  
+   - Zoom out (`ZOOM_MIN` 0.015): several planet dots + lots of void. Radar (bottom left) shows all eight.  
+   - Fly away from Cinder: ship coasts with **no gravity**. HUD arrow still names Cinder + distance.  
+   - Reach another world only after a long empty-space run (tens of seconds at full thrust). Re-entry prompt appears only in a local halo (`radius + 520`).
 
 ---
 
@@ -50,7 +57,7 @@ Recorded against the running Vite server on `:47331` (`?playtest=1`) while the p
 
 ### Space
 
-- Ship starts next to orange **Cinder**, already in re-entry range. Wave rocks spawn hundreds of pixels out; at default/zoom-out they read as tiny outlines, not a dogfight.
+- Ship starts near orange **Cinder** but **outside** the local re-entry halo (`SPAWN_CLEARANCE` 2200 from the surface, `REENTRY_RANGE` 520). Wave rocks spawn 900–3100px out; at default/zoom-out they read as tiny outlines, not a dogfight.
 - Re-entry callout is the HTML `#prompt` pill only. `drawNavMarker` no longer draws `{name} · E` on-planet (that used `14 / zoom` in screen space and exploded at `ZOOM_MIN`). Off-screen nav arrow + distance stay. Planet names in `drawPlanets` use a screen-pixel font cap.
 - `HULL BREACH` banner is the right death sting (no longer “RE-ENTRY”).
 - Objective **DEFEAT EMBER WARDEN** and `Rime LOCKED` are on-screen in space. Good fantasy; they compete with the planet.
@@ -87,7 +94,7 @@ Recorded against the running Vite server on `:47331` (`?playtest=1`) while the p
 
 ### Performance
 
-- Canvas 32k×24k starfield + cavern tiles stayed smooth in 1920 capture. No hitch noted during cine or boss.
+- Canvas 128k×96k starfield (stars are screen-space) + cavern tiles stayed smooth in 1920 capture. Rocks still spawn near the ship (`MAX_ROCKS` 40). No hitch noted during cine or boss.
 
 ---
 
@@ -106,7 +113,7 @@ Verified against this branch after the progression-loop land. Original main-bran
 
 | Issue | Hint |
 | --- | --- |
-| Space dogfight doesn’t read | `game.ts` `spawnRock` `away` distance 480–1600. Spawn a closer first wave, or start zoomed in (`zoomWanted`). |
+| Space dogfight doesn’t read | `game.ts` `spawnRock` `away` distance 900–3100. Spawn a closer first wave, or start zoomed in (`zoomWanted`). |
 | Cine skip from held Space | `game.ts` `key()` — `Space` skips cine. Clear `keys` / ignore held Space for ~0.4s when `beginReentry` starts. |
 | Fuel scramble vs climb fantasy | `meta.ts` `FUEL_THRUST` / idle drain vs `tankMax()` 40. Easy to strand before Ember Warden without `?playtest=1`. Either a shaft fuel pad or a first-dive tank bump. |
 | Combo vs objective overlap | `style.css` `#combo` `top: 72px` sits under `#objective`. |

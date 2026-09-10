@@ -52,15 +52,41 @@ export type PlanetDef = {
   fuel: number;
 };
 
-export const SPACE_W = 32000;
-export const SPACE_H = 24000;
+export const SPACE_W = 128000;
+export const SPACE_H = 96000;
+
+/** Distance from a planet's surface to the opening spawn (outside the re-entry halo). */
+export const SPAWN_CLEARANCE = 2200;
+
+/** Space gravity exists only inside `radius * SPACE_WELL_MULT`. Deep space is zero-g. */
+export const SPACE_WELL_MULT = 2;
+
+export function spaceWellAccel(
+  x: number,
+  y: number,
+): { ax: number; ay: number } {
+  let ax = 0;
+  let ay = 0;
+  for (const planet of PLANETS) {
+    const dx = planet.x - x;
+    const dy = planet.y - y;
+    const dist = Math.hypot(dx, dy);
+    const well = planet.radius * SPACE_WELL_MULT;
+    if (dist >= well || dist < 8) continue;
+    const falloff = 1 - dist / well;
+    const pull = planet.gravity * 0.55 * falloff;
+    ax += (dx / dist) * pull;
+    ay += (dy / dist) * pull;
+  }
+  return { ax, ay };
+}
 
 export const PLANETS: PlanetDef[] = [
   {
     id: "cinder",
     name: "Cinder",
-    x: 14800,
-    y: 11400,
+    x: 22000,
+    y: 46000,
     radius: 240,
     color: "#ff6b3d",
     atmosphere: "rgba(255, 90, 40, 0.18)",
@@ -81,8 +107,8 @@ export const PLANETS: PlanetDef[] = [
   {
     id: "rime",
     name: "Rime",
-    x: 25200,
-    y: 5600,
+    x: 62000,
+    y: 12000,
     radius: 280,
     color: "#9ad8ff",
     atmosphere: "rgba(140, 210, 255, 0.16)",
@@ -103,8 +129,8 @@ export const PLANETS: PlanetDef[] = [
   {
     id: "mycel",
     name: "Mycel",
-    x: 7800,
-    y: 18600,
+    x: 14000,
+    y: 84000,
     radius: 250,
     color: "#6fce7a",
     atmosphere: "rgba(90, 200, 110, 0.16)",
@@ -125,8 +151,8 @@ export const PLANETS: PlanetDef[] = [
   {
     id: "vesper",
     name: "Vesper",
-    x: 24800,
-    y: 18200,
+    x: 102000,
+    y: 16000,
     radius: 300,
     color: "#c9a6ff",
     atmosphere: "rgba(180, 120, 255, 0.16)",
@@ -143,6 +169,94 @@ export const PLANETS: PlanetDef[] = [
     pods: 18,
     loot: 20,
     fuel: 9,
+  },
+  {
+    id: "ashen",
+    name: "Ashen",
+    x: 48000,
+    y: 72000,
+    radius: 260,
+    color: "#ff8a4d",
+    atmosphere: "rgba(255, 120, 50, 0.16)",
+    fill: "#2a120c",
+    stroke: "#e07038",
+    deep: "#120806",
+    gravity: 200,
+    cols: 200,
+    rows: 155,
+    tile: 36,
+    seed: 55055,
+    walks: 18,
+    carve: 2,
+    pods: 13,
+    loot: 16,
+    fuel: 10,
+  },
+  {
+    id: "brine",
+    name: "Brine",
+    x: 116000,
+    y: 50000,
+    radius: 290,
+    color: "#3ec8c8",
+    atmosphere: "rgba(50, 210, 210, 0.16)",
+    fill: "#0c2428",
+    stroke: "#3ec8c8",
+    deep: "#061418",
+    gravity: 130,
+    cols: 230,
+    rows: 145,
+    tile: 36,
+    seed: 66066,
+    walks: 14,
+    carve: 3,
+    pods: 11,
+    loot: 20,
+    fuel: 14,
+  },
+  {
+    id: "thorn",
+    name: "Thorn",
+    x: 74000,
+    y: 88000,
+    radius: 255,
+    color: "#c6e04a",
+    atmosphere: "rgba(190, 220, 60, 0.15)",
+    fill: "#1c2410",
+    stroke: "#c6e04a",
+    deep: "#0c1406",
+    gravity: 210,
+    cols: 215,
+    rows: 165,
+    tile: 36,
+    seed: 77077,
+    walks: 24,
+    carve: 1,
+    pods: 16,
+    loot: 18,
+    fuel: 9,
+  },
+  {
+    id: "helix",
+    name: "Helix",
+    x: 110000,
+    y: 82000,
+    radius: 310,
+    color: "#ff5ec8",
+    atmosphere: "rgba(255, 80, 200, 0.16)",
+    fill: "#241018",
+    stroke: "#ff5ec8",
+    deep: "#14080e",
+    gravity: 190,
+    cols: 250,
+    rows: 175,
+    tile: 36,
+    seed: 88088,
+    walks: 26,
+    carve: 2,
+    pods: 20,
+    loot: 22,
+    fuel: 10,
   },
 ];
 

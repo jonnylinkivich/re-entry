@@ -19,6 +19,7 @@ import {
   PLANETS,
   SPACE_H,
   SPACE_W,
+  SPAWN_CLEARANCE,
   type Cavern,
   type PlanetDef,
   circleHitsSolid,
@@ -27,6 +28,7 @@ import {
   generateCavern,
   inExitShaft,
   moveAgainst,
+  spaceWellAccel,
 } from "./cavern.ts";
 import { ReentryCine, RescueCine } from "./cinematic.ts";
 import {
@@ -192,9 +194,10 @@ const BULLET_LIFE = 1.05;
 const MAX_PETS = 2;
 const MAX_ROCKS = 40;
 const MAX_SPARKS = 64;
-const ZOOM_MIN = 0.08;
+const ZOOM_MIN = 0.015;
 const ZOOM_MAX = 3.6;
-const REENTRY_RANGE = 2600;
+/** Halo from the planet surface. `nearestPlanet` adds `radius`, so the prompt is local. */
+const REENTRY_RANGE = 520;
 const ROCK_STROKES = [
   "#7ee7ff",
   "#ffb36b",
@@ -487,7 +490,7 @@ export class Game {
     this.fuel = this.runBoost ? Math.max(this.meta.maxFuel, 120) : this.meta.maxFuel;
     this.energy = this.runBoost ? Math.max(this.meta.maxEnergy, 80) : this.meta.maxEnergy;
     const home = PLANETS[0];
-    this.ship = this.freshShip(home.x + home.radius + 880, home.y);
+    this.ship = this.freshShip(home.x + home.radius + SPAWN_CLEARANCE, home.y);
     this.ship.angle = Math.PI;
     this.rocks = [];
     this.seed = (Math.random() * 1e9) | 0;
@@ -662,7 +665,7 @@ export class Game {
     tags.push(`Tank ${Math.round(this.tankMax())}`);
     tags.push(salvageLabel(this.meta.salvageRate));
     for (const key of this.ownedKeys()) {
-      if (key === "vesper") tags.push("Vesper Clear");
+      if (key === "helix") tags.push("Helix Clear");
       else tags.push(titleKey(key));
     }
     return tags;
@@ -1110,12 +1113,12 @@ export class Game {
     if (opts.away) {
       for (let attempt = 0; attempt < 10; attempt++) {
         const ang = rand() * Math.PI * 2;
-        const dist = 480 + rand() * 1600;
+        const dist = 900 + rand() * 2200;
         x = this.ship.x + Math.cos(ang) * dist;
         y = this.ship.y + Math.sin(ang) * dist;
         x = clamp(x, radius + 40, ww - radius - 40);
         y = clamp(y, radius + 40, wh - radius - 40);
-        if (dist2(x, y, this.ship.x, this.ship.y) > 400 * 400) break;
+        if (dist2(x, y, this.ship.x, this.ship.y) > 700 * 700) break;
       }
     }
     if (this.cavern && circleHitsSolid(this.cavern, x, y, radius)) return;
@@ -1212,6 +1215,10 @@ export class Game {
 
     if (this.zone === "cavern" && this.planet) {
       ship.vy += this.planet.gravity * dt;
+    } else if (this.zone === "space") {
+      const well = spaceWellAccel(ship.x, ship.y);
+      ship.vx += well.ax * dt;
+      ship.vy += well.ay * dt;
     }
 
     const maxSpeed = this.zone === "cavern" ? MAX_SPEED_CAVE : MAX_SPEED_SPACE;
@@ -2083,7 +2090,7 @@ export class Game {
     if (onScreen) {
       // Name / LOCKED already come from drawPlanets. Re-entry is the HTML
       // #prompt — a second "{name} · E" in screen space at 14/zoom explodes
-      // at ZOOM_MIN (0.08). Keep the off-screen arrow + distance only.
+      // at ZOOM_MIN. Keep the off-screen arrow + distance only.
       return;
     }
     this.drawEdgeMarker(ctx, planet.x, planet.y, planet.color, `${planet.name}  ${Math.round(dist)}`);

@@ -1,4 +1,35 @@
-export type PlanetId = "cinder" | "rime" | "mycel" | "vesper";
+export type PlanetId =
+  | "cinder"
+  | "rime"
+  | "mycel"
+  | "vesper"
+  | "ashen"
+  | "brine"
+  | "thorn"
+  | "helix";
+
+/** Sequential key chain. Cinder is open; each later world needs the previous key. */
+const UNLOCK_NEED: Record<PlanetId, string | null> = {
+  cinder: null,
+  rime: "cinder",
+  mycel: "rime",
+  vesper: "mycel",
+  ashen: "vesper",
+  brine: "ashen",
+  thorn: "brine",
+  helix: "thorn",
+};
+
+const GATE_OBJECTIVE: { key: string; text: string }[] = [
+  { key: "cinder", text: "Defeat Ember Warden" },
+  { key: "rime", text: "Defeat Frost Crown" },
+  { key: "mycel", text: "Defeat Sporeheart" },
+  { key: "vesper", text: "Defeat Night Veil" },
+  { key: "ashen", text: "Defeat Ash Colossus" },
+  { key: "brine", text: "Defeat Tide Serpent" },
+  { key: "thorn", text: "Defeat Bramble King" },
+  { key: "helix", text: "Defeat Coil Warden" },
+];
 
 export type MetaState = {
   credits: number;
@@ -93,17 +124,12 @@ export function normalizeMeta(partial: Partial<MetaState>): MetaState {
 }
 
 export function planetUnlocked(id: string, keys: readonly string[]): boolean {
-  if (id === "cinder") return true;
-  if (id === "rime") return keys.includes("cinder");
-  if (id === "mycel") return keys.includes("rime");
-  if (id === "vesper") return keys.includes("mycel");
-  return false;
+  const need = neededKey(id);
+  return need === null || keys.includes(need);
 }
 
 export function neededKey(id: string): string | null {
-  if (id === "rime") return "cinder";
-  if (id === "mycel") return "rime";
-  if (id === "vesper") return "mycel";
+  if (id in UNLOCK_NEED) return UNLOCK_NEED[id as PlanetId];
   return null;
 }
 
@@ -117,10 +143,9 @@ export function salvageLabel(rate: number): string {
 }
 
 export function gateObjective(keys: readonly string[]): string {
-  if (!keys.includes("cinder")) return "Defeat Ember Warden";
-  if (!keys.includes("rime")) return "Defeat Frost Crown";
-  if (!keys.includes("mycel")) return "Defeat Sporeheart";
-  if (!keys.includes("vesper")) return "Defeat Night Veil";
+  for (const step of GATE_OBJECTIVE) {
+    if (!keys.includes(step.key)) return step.text;
+  }
   return "All keys recovered";
 }
 

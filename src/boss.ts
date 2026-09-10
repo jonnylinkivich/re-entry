@@ -1,6 +1,6 @@
 import { circleHitsSolid, moveAgainst, type Cavern } from "./cavern.ts";
 
-export type BossKind = "ember" | "frost" | "spore" | "veil";
+export type BossKind = "ember" | "frost" | "spore" | "veil" | "ash" | "tide" | "bramble" | "coil";
 
 export type BossDef = {
   planetId: string;
@@ -71,6 +71,50 @@ export const BOSS_BY_PLANET: Record<string, BossDef> = {
     hp: 110,
     radius: 40,
     color: "#c9a6ff",
+  },
+  ashen: {
+    planetId: "ashen",
+    kind: "ash",
+    name: "Ash Colossus",
+    keyId: "ashen",
+    tankBonus: 16,
+    salvage: null,
+    hp: 118,
+    radius: 36,
+    color: "#ff8a4d",
+  },
+  brine: {
+    planetId: "brine",
+    kind: "tide",
+    name: "Tide Serpent",
+    keyId: "brine",
+    tankBonus: 18,
+    salvage: null,
+    hp: 124,
+    radius: 38,
+    color: "#3ec8c8",
+  },
+  thorn: {
+    planetId: "thorn",
+    kind: "bramble",
+    name: "Bramble King",
+    keyId: "thorn",
+    tankBonus: 20,
+    salvage: null,
+    hp: 130,
+    radius: 37,
+    color: "#c6e04a",
+  },
+  helix: {
+    planetId: "helix",
+    kind: "coil",
+    name: "Coil Warden",
+    keyId: "helix",
+    tankBonus: 22,
+    salvage: null,
+    hp: 140,
+    radius: 42,
+    color: "#ff5ec8",
   },
 };
 
@@ -145,7 +189,11 @@ export class PlanetBoss {
     if (this.def.kind === "ember") this.stepEmber(dt, shipX, shipY);
     else if (this.def.kind === "frost") this.stepFrost(dt, shipX, shipY);
     else if (this.def.kind === "spore") this.stepSpore(dt, shipX, shipY, spawnRock);
-    else this.stepVeil(dt, shipX, shipY, cavern);
+    else if (this.def.kind === "veil") this.stepVeil(dt, shipX, shipY, cavern);
+    else if (this.def.kind === "ash") this.stepAsh(dt, shipX, shipY);
+    else if (this.def.kind === "tide") this.stepTide(dt, shipX, shipY);
+    else if (this.def.kind === "bramble") this.stepBramble(dt, shipX, shipY, spawnRock);
+    else this.stepCoil(dt, shipX, shipY);
 
     this.vx += (this.homeX - this.x) * 0.35 * dt;
     this.vy += (this.homeY - this.y) * 0.35 * dt;
@@ -242,9 +290,37 @@ export class PlanetBoss {
       ctx.lineTo(-r * 0.7, -r * 0.15);
     } else if (this.def.kind === "spore") {
       ctx.arc(0, 0, r * 0.82, 0, Math.PI * 2);
-    } else {
+    } else if (this.def.kind === "veil") {
       ctx.arc(0, 0, r * 0.7, 0.35, Math.PI * 2 - 0.35);
       ctx.arc(r * 0.15, 0, r * 0.42, Math.PI * 0.7, -Math.PI * 0.7, true);
+    } else if (this.def.kind === "ash") {
+      for (let i = 0; i < 10; i++) {
+        const a = (i / 10) * Math.PI * 2 + this.t * 0.25;
+        const rad = i % 2 === 0 ? r : r * 0.5;
+        const x = Math.cos(a) * rad;
+        const y = Math.sin(a) * rad;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+    } else if (this.def.kind === "tide") {
+      ctx.moveTo(-r * 0.9, 0);
+      ctx.quadraticCurveTo(-r * 0.3, -r, r * 0.2, -r * 0.2);
+      ctx.quadraticCurveTo(r * 0.7, r * 0.15, r, 0);
+      ctx.quadraticCurveTo(r * 0.7, -r * 0.1, r * 0.2, r * 0.25);
+      ctx.quadraticCurveTo(-r * 0.3, r, -r * 0.9, 0);
+    } else if (this.def.kind === "bramble") {
+      for (let i = 0; i < 7; i++) {
+        const a = (i / 7) * Math.PI * 2 - Math.PI / 2;
+        const x = Math.cos(a) * r;
+        const y = Math.sin(a) * r;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+        ctx.lineTo(Math.cos(a + 0.22) * r * 0.42, Math.sin(a + 0.22) * r * 0.42);
+      }
+    } else {
+      ctx.arc(0, 0, r * 0.55, 0, Math.PI * 2);
+      ctx.moveTo(r * 0.2, 0);
+      ctx.arc(0, 0, r * 0.88, 0.15, Math.PI * 1.7);
     }
     ctx.closePath();
     ctx.fill();
@@ -313,6 +389,76 @@ export class PlanetBoss {
           break;
         }
       }
+    }
+  }
+
+  private stepAsh(dt: number, shipX: number, shipY: number): void {
+    if (this.fireCd <= 0) {
+      this.fireCd = 1.2;
+      this.radial(6, 200, 2.2, this.def.color);
+      for (let i = 0; i < 4; i++) {
+        const a = Math.PI * 0.5 + (i - 1.5) * 0.28;
+        this.shot(a, 150 + i * 18, 2.4, 3.2, "#ffb36b", false);
+      }
+    }
+    if (this.specialCd <= 0) {
+      this.specialCd = 2.9;
+      const ang = Math.atan2(shipY - this.y, shipX - this.x);
+      this.vx += Math.cos(ang) * 240;
+      this.vy += Math.sin(ang) * 240;
+    }
+    this.vy += 22 * dt;
+  }
+
+  private stepTide(_dt: number, shipX: number, shipY: number): void {
+    if (this.fireCd <= 0) {
+      this.fireCd = 0.88;
+      const base = Math.atan2(shipY - this.y, shipX - this.x);
+      const sweep = Math.sin(this.t * 2.2) * 0.55;
+      for (let i = -2; i <= 2; i++) {
+        this.shot(base + sweep + i * 0.2, 230, 2.3, 3.6, this.def.color, false);
+      }
+    }
+    if (this.specialCd <= 0) {
+      this.specialCd = 2.7;
+      const base = Math.atan2(shipY - this.y, shipX - this.x);
+      for (const side of [-1, 1]) {
+        this.shot(base + side * 1.15, 190, 2.6, 5, "#9ad8ff", false);
+      }
+    }
+    this.vx += Math.sin(this.t * 1.6) * 28;
+    this.vy += Math.cos(this.t * 1.1) * 18;
+  }
+
+  private stepBramble(_dt: number, shipX: number, shipY: number, spawnRock: SpawnRockFn): void {
+    if (this.fireCd <= 0) {
+      this.fireCd = 1.15;
+      const a = Math.atan2(shipY - this.y, shipX - this.x);
+      for (const off of [-0.12, 0, 0.12]) {
+        this.shot(a + off, 240, 2.1, 3.4, this.def.color, false);
+      }
+    }
+    if (this.specialCd <= 0) {
+      this.specialCd = 2.8;
+      this.radial(7, 160, 1.9, "#c6e04a");
+      const a = Math.random() * Math.PI * 2;
+      spawnRock(this.x + Math.cos(a) * 64, this.y + Math.sin(a) * 64, 1);
+    }
+  }
+
+  private stepCoil(_dt: number, shipX: number, shipY: number): void {
+    if (this.fireCd <= 0) {
+      this.fireCd = 0.42;
+      const a = this.t * 5.4;
+      this.shot(a, 220, 2.4, 3.2, this.def.color, false);
+      this.shot(a + Math.PI, 220, 2.4, 3.2, "#ffb6e4", false);
+    }
+    if (this.specialCd <= 0) {
+      this.specialCd = 2.4;
+      const a = Math.atan2(shipY - this.y, shipX - this.x);
+      this.shot(a, 200, 3.0, 5, "#ffe08a", true);
+      this.vx += Math.cos(a + Math.PI / 2) * 220;
+      this.vy += Math.sin(a + Math.PI / 2) * 220;
     }
   }
 

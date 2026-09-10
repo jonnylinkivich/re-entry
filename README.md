@@ -1,6 +1,6 @@
 # RE-ENTRY
 
-A neon arcade shooter with an 8-bit dive. Open space is a huge map. Cinder is unlocked. Fly in, press **E**, survive the cavern, and beat the planet boss for the key to the next world.
+A neon arcade shooter with an 8-bit dive. Open space is a huge empty map (128k × 96k) with **no gravity** until you hug a planet. Cinder is unlocked. Fly in, press **E**, survive the cavern, and beat the planet boss for the key to the next world.
 
 ## Play
 
@@ -15,7 +15,9 @@ A neon arcade shooter with an 8-bit dive. Open space is a huge map. Cinder is un
 
 ### Space
 
-The camera follows you across a 32k × 24k field. Rocks can drop credits, guns, energy cells, and a shooting pet. Four planets sit far apart: **Cinder**, **Rime**, **Mycel**, **Vesper**. Later planets stay locked until you hold the previous world's key.
+The camera follows you across a 128k × 96k field. Deep space is zero-g; a short well only pulls inside about two planet radii. Rocks spawn near the ship (capped) and can drop credits, guns, energy cells, and a shooting pet. Eight planets sit far apart: **Cinder**, **Rime**, **Mycel**, **Vesper**, then **Ashen**, **Brine**, **Thorn**, **Helix**. You start near Cinder but outside its re-entry halo — follow the nav arrow. Later planets stay locked until you hold the previous world's key.
+
+To check empty space: Begin, confirm there is no “Re-enter Cinder” prompt, zoom out (planets are sparse dots), and fly away from Cinder. No gravity pull. The HUD arrow still points at Cinder. Travel to Rime is a long empty-space run.
 
 ### Planets
 
@@ -28,7 +30,11 @@ Each planet is its own cavern. Gravity pulls you down. Thrust burns a small fuel
 | Cinder | Ember Warden | Cinder Key → unlocks Rime, larger fuel tank |
 | Rime | Frost Crown | Rime Key → unlocks Mycel, salvage 75% |
 | Mycel | Sporeheart | Mycel Key → unlocks Vesper, salvage 100% |
-| Vesper | Night Veil | Final clear, largest tank |
+| Vesper | Night Veil | Vesper Key → unlocks Ashen |
+| Ashen | Ash Colossus | Ashen Key → unlocks Brine |
+| Brine | Tide Serpent | Brine Key → unlocks Thorn |
+| Thorn | Bramble King | Thorn Key → unlocks Helix |
+| Helix | Coil Warden | Final clear |
 
 Keys, tank size, salvage rate, credits, and high score persist in `localStorage` (`reentry-save`, migrated from old `drift-*` keys). Guns persist space ↔ planet within a run.
 
