@@ -211,8 +211,11 @@ export class PlanetBoss {
       this.y += this.vy * dt;
     }
 
-    const next: BossShot[] = [];
-    for (const shot of this.shots) {
+    const list = this.shots;
+    let w = 0;
+    for (let i = 0; i < list.length; i++) {
+      const shot = list[i];
+      if (!shot) continue;
       shot.life -= dt;
       if (shot.homing) {
         const ang = Math.atan2(shipY - shot.y, shipX - shot.x);
@@ -228,9 +231,9 @@ export class PlanetBoss {
       shot.y += shot.vy * dt;
       if (shot.life <= 0) continue;
       if (cavern && circleHitsSolid(cavern, shot.x, shot.y, shot.radius)) continue;
-      next.push(shot);
+      list[w++] = shot;
     }
-    this.shots = next;
+    list.length = w;
   }
 
   draw(ctx: CanvasRenderingContext2D, zoom: number): void {

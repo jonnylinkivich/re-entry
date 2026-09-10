@@ -16,10 +16,12 @@ import {
 } from "./audio.ts";
 import { BOSS_BY_PLANET, PlanetBoss } from "./boss.ts";
 import {
+  DOCK_RANGE,
   PLANETS,
   SPACE_H,
   SPACE_W,
   SPAWN_CLEARANCE,
+  STATION,
   type Cavern,
   type PlanetDef,
   circleHitsSolid,
@@ -32,6 +34,7 @@ import {
 } from "./cavern.ts";
 import { ReentryCine, RescueCine } from "./cinematic.ts";
 import {
+  ALL_PLANET_KEYS,
   ENERGY_DRAIN,
   ENERGY_HIT,
   FUEL_IDLE,
@@ -48,8 +51,17 @@ import {
   titleKey,
   type MetaState,
 } from "./meta.ts";
+import {
+  SHOP_CELL_CAP,
+  SHOP_CELL_STEP,
+  SHOP_TANK_CAP,
+  SHOP_TANK_STEP,
+  buildShopRows,
+  type ShopId,
+  type ShopRow,
+} from "./shop.ts";
 
-export type Mode = "menu" | "play" | "pause" | "over" | "cine";
+export type Mode = "menu" | "play" | "pause" | "over" | "cine" | "shop";
 export type Zone = "space" | "cavern";
 
 export type HudSnapshot = {
@@ -77,6 +89,9 @@ export type HudSnapshot = {
   muted: boolean;
   zone: Zone;
   prompt: string;
+  promptDock: boolean;
+  shopRows: ShopRow[];
+  shopHint: string;
 };
 
 type Ship = {
@@ -193,7 +208,18 @@ const BULLET_SPEED = 620;
 const BULLET_LIFE = 1.05;
 const MAX_PETS = 2;
 const MAX_ROCKS = 40;
-const MAX_SPARKS = 64;
+const MAX_SPARKS = 48;
+const EMPTY_SHOP: ShopRow[] = [];
+const PICKUP_LOOK: Record<LootKind, { color: string; mark: string }> = {
+  credits: { color: "#ffd36b", mark: "C" },
+  ore: { color: "#ffb36b", mark: "O" },
+  energy: { color: "#7ee7ff", mark: "E" },
+  rapid: { color: "#ff7ad9", mark: "R" },
+  twin: { color: "#9ad8ff", mark: "T" },
+  spread: { color: "#c9a6ff", mark: "W" },
+  pet: { color: "#7dffb1", mark: "P" },
+  fuel: { color: "#ffe08a", mark: "F" },
+};
 const ZOOM_MIN = 0.015;
 const ZOOM_MAX = 3.6;
 /** Halo from the planet surface. `nearestPlanet` adds `radius`, so the prompt is local. */
@@ -334,10 +360,21 @@ export class Game {
   private camY = 0;
   private zoom = 1;
   private zoomWanted = 1;
+  private viewRight = 0;
+  private viewBottom = 0;
+  private loadoutCached: string[] = [];
+  private loadoutCacheKey = "";
+  private nebulaCool: CanvasGradient | null = null;
+  private nebulaWarm: CanvasGradient | null = null;
+  private nebulaKey = "";
+  private fpsEma = 60;
+  private showFps = false;
+  private liveHud: HudSnapshot | null = null;
   private fuel = 0;
   private energy = 0;
   private diveCargo = 0;
   private prompt = "";
+  private shopHint = "";
   private planet: PlanetDef | null = null;
   private cavern: Cavern | null = null;
   private caverns = new Map<string, Cavern>();
@@ -360,6 +397,7 @@ export class Game {
     this.fuel = this.meta.maxFuel;
     this.energy = this.meta.maxEnergy;
     this.ship = this.freshShip(SPACE_W * 0.5, SPACE_H * 0.5);
+    this.showFps = playtestFlags().boost;
     this.snapCam();
     this.rebuildStars();
     this.decorateMenu();
@@ -384,6 +422,7 @@ export class Game {
       }
       if (this.mode === "menu" || this.mode === "over") this.start();
       else if (this.mode === "pause") this.resume();
+      else if (this.mode === "shop") this.closeShop();
       else if (this.mode === "play") this.tryTransit();
     }
     if (code === "KeyE") {
@@ -399,6 +438,7 @@ export class Game {
     if (code === "Space" && this.mode === "cine") this.skipCine();
     if (code === "Escape" || code === "KeyP") {
       if (this.mode === "cine") this.skipCine();
+      else if (this.mode === "shop") this.closeShop();
       else if (this.mode === "play") this.pause();
       else if (this.mode === "pause") this.resume();
     }
@@ -438,6 +478,11 @@ export class Game {
   pulseFire(): void {
     this.queuedFire = true;
     if (this.mode !== "play" || this.zone !== "space" || !this.pointer) return;
+    const stationReach = STATION.radius + 56;
+    if (dist2(this.pointer.x, this.pointer.y, STATION.x, STATION.y) < stationReach * stationReach) {
+      if (this.nearStation()) this.openShop();
+      return;
+    }
     for (const planet of PLANETS) {
       const reach = planet.radius + 56;
       if (dist2(this.pointer.x, this.pointer.y, planet.x, planet.y) < reach * reach) {
@@ -469,6 +514,7 @@ export class Game {
     this.runCredits = 0;
     this.diveCargo = 0;
     this.prompt = "";
+    this.shopHint = "";
     this.gear = { rapid: false, twin: false, spread: false };
     this.bullets = [];
     this.sparks = [];
@@ -482,8 +528,9 @@ export class Game {
     const flags = playtestFlags();
     this.runBoost = flags.boost;
     this.runUnlock = flags.unlock;
+    this.showFps = flags.boost;
     if (this.runBoost) {
-      this.meta.credits = Math.max(this.meta.credits, 40);
+      this.meta.credits = Math.max(this.meta.credits, 80);
       saveMeta(this.meta);
     }
     this.credits = this.meta.credits;
@@ -492,12 +539,14 @@ export class Game {
     const home = PLANETS[0];
     this.ship = this.freshShip(home.x + home.radius + SPAWN_CLEARANCE, home.y);
     this.ship.angle = Math.PI;
+    this.applyMetaLoadout();
     this.rocks = [];
     this.seed = (Math.random() * 1e9) | 0;
     this.snapCam();
     this.spawnWave(this.wave);
     this.announce("CINDER AHEAD");
     sfxWave();
+    this.bindPlaytestHooks();
     this.markHud();
   }
 
@@ -513,8 +562,55 @@ export class Game {
     this.markHud();
   }
 
+  openShop(): void {
+    if (this.mode !== "play" || this.zone !== "space" || !this.nearStation()) return;
+    this.mode = "shop";
+    this.shopHint = "";
+    this.keys.delete("KeyE");
+    this.keys.delete("Enter");
+    this.markHud();
+  }
+
+  closeShop(): void {
+    if (this.mode !== "shop") return;
+    this.mode = "play";
+    this.shopHint = "";
+    this.markHud();
+  }
+
+  buyShop(id: string): void {
+    if (this.mode !== "shop") return;
+    const row = this.shopRows().find((item) => item.id === id);
+    if (!row) return;
+    if (row.status === "owned") {
+      this.shopHint = `${row.name} already owned`;
+      this.markHud();
+      return;
+    }
+    if (row.status === "full") {
+      this.shopHint = `${row.name} is maxed`;
+      this.markHud();
+      return;
+    }
+    if (row.status === "broke") {
+      this.shopHint = `Need ${row.missing} more CR for ${row.name}`;
+      this.markHud();
+      return;
+    }
+    if (!this.spendPurse(row.price)) {
+      this.shopHint = `Need ${row.price} CR`;
+      this.markHud();
+      return;
+    }
+    this.applyShopBuy(row.id);
+    this.shopHint = `${row.name} installed`;
+    this.announce(row.name.toUpperCase());
+    sfxPickup();
+    this.markHud();
+  }
+
   hud(): HudSnapshot {
-    return {
+    const snap = this.liveHud ?? (this.liveHud = {
       mode: this.mode,
       score: this.score,
       high: this.high,
@@ -527,7 +623,7 @@ export class Game {
       banner: this.banner,
       finalLine: this.finalLine,
       loadout: this.loadoutLabels(),
-      sector: this.planet ? this.planet.name.toUpperCase() : `SPACE · W${this.wave}`,
+      sector: "",
       fuel: this.fuel,
       maxFuel: this.tankMax(),
       energy: this.energy,
@@ -539,11 +635,43 @@ export class Game {
       muted: this.meta.muted,
       zone: this.zone,
       prompt: this.prompt,
-    };
+      promptDock: this.prompt.startsWith("Dock"),
+      shopRows: EMPTY_SHOP,
+      shopHint: this.shopHint,
+    });
+    snap.mode = this.mode;
+    snap.score = this.score;
+    snap.high = this.high;
+    snap.lives = this.lives;
+    snap.wave = this.wave;
+    snap.combo = this.combo;
+    snap.maxLives = MAX_LIVES;
+    snap.credits = this.credits;
+    snap.runCredits = this.runCredits;
+    snap.banner = this.banner;
+    snap.finalLine = this.finalLine;
+    snap.loadout = this.loadoutLabels();
+    snap.sector = this.planet ? this.planet.name.toUpperCase() : `SPACE · W${this.wave}`;
+    snap.fuel = this.fuel;
+    snap.maxFuel = this.tankMax();
+    snap.energy = this.energy;
+    snap.maxEnergy = this.energyMax();
+    snap.cargo = this.diveCargo;
+    snap.salvageRate = this.meta.salvageRate;
+    snap.objective = this.objectiveText();
+    snap.shielding = this.ship.shielding;
+    snap.muted = this.meta.muted;
+    snap.zone = this.zone;
+    snap.prompt = this.prompt;
+    snap.promptDock = this.prompt.startsWith("Dock");
+    snap.shopRows = this.mode === "shop" ? this.shopRows() : EMPTY_SHOP;
+    snap.shopHint = this.shopHint;
+    return snap;
   }
 
   update(dt: number): void {
     const t = clamp(dt, 0, 0.05);
+    this.fpsEma = this.fpsEma * 0.9 + (1 / Math.max(t, 1 / 240)) * 0.1;
     this.shake = Math.max(0, this.shake - t * 22);
     if (this.bannerLife > 0) {
       this.bannerLife -= t;
@@ -556,7 +684,7 @@ export class Game {
       return;
     }
 
-    if (this.mode === "pause" || this.mode === "over") {
+    if (this.mode === "pause" || this.mode === "over" || this.mode === "shop") {
       this.driftDecor(t * 0.35);
       this.stepSparks(t);
       this.followCam(t);
@@ -601,18 +729,25 @@ export class Game {
     }
     this.drawBackdrop(ctx);
 
+    this.refreshView();
     ctx.save();
     if (this.shake > 0.4) {
       const mag = this.shake * 0.7;
-      ctx.translate((Math.random() - 0.5) * mag, (Math.random() - 0.5) * mag);
+      const a = this.shake * 37.1;
+      ctx.translate(Math.sin(a) * mag, Math.cos(a * 1.31) * mag);
     }
-    ctx.scale(this.zoom, this.zoom);
-    ctx.translate(-this.camX, -this.camY);
+    const z = this.zoom;
+    // Snap the camera to screen pixels to cut float32 jitter on the 640k map.
+    const snapX = Math.round(this.camX * z) / z;
+    const snapY = Math.round(this.camY * z) / z;
+    ctx.scale(z, z);
+    ctx.translate(-snapX, -snapY);
 
     if (this.cavern) {
-      drawCavern(ctx, this.cavern, this.camX, this.camY, this.viewW(), this.viewH());
+      drawCavern(ctx, this.cavern, this.camX, this.camY, this.w / z, this.h / z, z);
     } else {
       this.drawPlanets(ctx);
+      this.drawStation(ctx);
     }
 
     for (const spark of this.sparks) {
@@ -627,8 +762,12 @@ export class Game {
     for (const bullet of this.bullets) {
       if (this.inView(bullet.x, bullet.y, 10)) this.drawBullet(ctx, bullet);
     }
-    for (const pet of this.pets) this.drawPet(ctx, pet);
-    if (this.boss?.alive) this.boss.draw(ctx, this.zoom);
+    for (const pet of this.pets) {
+      if (this.inView(pet.x, pet.y, 16)) this.drawPet(ctx, pet);
+    }
+    if (this.boss?.alive && this.inView(this.boss.x, this.boss.y, this.boss.def.radius + 80)) {
+      this.boss.draw(ctx, this.zoom);
+    }
     if (this.mode !== "menu") this.drawShip(ctx);
     for (const floater of this.floaters) {
       if (this.inView(floater.x, floater.y, 40)) this.drawFloater(ctx, floater);
@@ -639,6 +778,7 @@ export class Game {
     this.drawBanner(ctx);
     this.drawNavMarker(ctx);
     if (this.mode !== "menu") this.drawMinimap(ctx);
+    if (this.showFps) this.drawFps(ctx);
   }
 
   private worldW(): number {
@@ -655,6 +795,9 @@ export class Game {
   }
 
   private loadoutLabels(): string[] {
+    const keys = this.ownedKeys();
+    const key = `${this.gear.twin ? 1 : 0}${this.gear.spread ? 1 : 0}${this.gear.rapid ? 1 : 0}${this.ship.shielding ? 1 : 0}:${this.pets.length}:${this.tankMax()}:${this.meta.salvageRate}:${keys.join(",")}`;
+    if (key === this.loadoutCacheKey) return this.loadoutCached;
     const tags: string[] = [];
     if (this.gear.twin) tags.push("Twin");
     if (this.gear.spread) tags.push("Spread");
@@ -664,10 +807,12 @@ export class Game {
     if (this.pets.length > 1) tags.push(`${this.pets.length} Pets`);
     tags.push(`Tank ${Math.round(this.tankMax())}`);
     tags.push(salvageLabel(this.meta.salvageRate));
-    for (const key of this.ownedKeys()) {
-      if (key === "helix") tags.push("Helix Clear");
-      else tags.push(titleKey(key));
+    for (const id of keys) {
+      if (id === "helix") tags.push("Helix Clear");
+      else tags.push(titleKey(id));
     }
+    this.loadoutCacheKey = key;
+    this.loadoutCached = tags;
     return tags;
   }
 
@@ -680,8 +825,94 @@ export class Game {
   }
 
   private ownedKeys(): string[] {
-    if (this.runUnlock) return ["cinder", "rime", "mycel", "vesper"];
+    if (this.runUnlock) return [...ALL_PLANET_KEYS];
     return this.meta.keys;
+  }
+
+  private applyMetaLoadout(): void {
+    this.gear = {
+      rapid: this.meta.rapid,
+      twin: this.meta.twin,
+      spread: this.meta.spread,
+    };
+    this.pets = [];
+    const n = Math.min(MAX_PETS, this.meta.pets);
+    for (let i = 0; i < n; i++) this.addPetBody();
+  }
+
+  private persistLoadout(): void {
+    this.meta.rapid = this.gear.rapid;
+    this.meta.twin = this.gear.twin;
+    this.meta.spread = this.gear.spread;
+    this.meta.pets = this.pets.length;
+    saveMeta(this.meta);
+  }
+
+  private shopRows(): ShopRow[] {
+    return buildShopRows({
+      credits: this.credits,
+      cargo: this.diveCargo,
+      rapid: this.gear.rapid,
+      twin: this.gear.twin,
+      spread: this.gear.spread,
+      pets: this.pets.length,
+      maxPets: MAX_PETS,
+      maxFuel: this.meta.maxFuel,
+      maxEnergy: this.meta.maxEnergy,
+      salvageRate: this.meta.salvageRate,
+      fuel: this.fuel,
+      energy: this.energy,
+      tankMax: this.tankMax(),
+      energyMax: this.energyMax(),
+    });
+  }
+
+  private spendPurse(cost: number): boolean {
+    const purse = this.credits + Math.max(0, this.diveCargo);
+    if (purse < cost) return false;
+    let left = cost;
+    const fromCredits = Math.min(this.meta.credits, left);
+    this.meta.credits -= fromCredits;
+    left -= fromCredits;
+    if (left > 0) this.diveCargo = Math.max(0, this.diveCargo - left);
+    this.credits = this.meta.credits;
+    saveMeta(this.meta);
+    return true;
+  }
+
+  private applyShopBuy(id: ShopId): void {
+    if (id === "twin") this.gear.twin = true;
+    else if (id === "spread") this.gear.spread = true;
+    else if (id === "rapid") this.gear.rapid = true;
+    else if (id === "pet") this.addPetBody();
+    else if (id === "tank") {
+      this.meta.maxFuel = Math.min(SHOP_TANK_CAP, this.meta.maxFuel + SHOP_TANK_STEP);
+      this.fuel = Math.min(this.tankMax(), this.fuel + SHOP_TANK_STEP);
+    } else if (id === "cell") {
+      this.meta.maxEnergy = Math.min(SHOP_CELL_CAP, this.meta.maxEnergy + SHOP_CELL_STEP);
+      this.energy = Math.min(this.energyMax(), this.energy + SHOP_CELL_STEP);
+    } else if (id === "salvage") {
+      this.meta.salvageRate = this.meta.salvageRate < 0.75 ? 0.75 : 1;
+    } else if (id === "energy") {
+      this.energy = this.energyMax();
+    } else if (id === "fuel") {
+      this.fuel = this.tankMax();
+    }
+    this.persistLoadout();
+  }
+
+  private nearStation(): boolean {
+    if (this.zone !== "space") return false;
+    const reach = STATION.radius + DOCK_RANGE;
+    return dist2(this.ship.x, this.ship.y, STATION.x, STATION.y) < reach * reach;
+  }
+
+  private closestPoi(): { x: number; y: number; color: string; name: string } {
+    const planet = this.closestPlanet();
+    const sd = dist2(this.ship.x, this.ship.y, STATION.x, STATION.y);
+    const pd = dist2(this.ship.x, this.ship.y, planet.x, planet.y);
+    if (sd < pd) return { x: STATION.x, y: STATION.y, color: "#7ee7ff", name: STATION.name };
+    return planet;
   }
 
   private freshShip(x: number, y: number): Ship {
@@ -718,8 +949,9 @@ export class Game {
 
   private followCam(dt: number): void {
     this.zoom += (this.zoomWanted - this.zoom) * (1 - Math.exp(-14 * dt));
-    const vw = this.viewW();
-    const vh = this.viewH();
+    this.zoom = clamp(this.zoom, ZOOM_MIN, ZOOM_MAX);
+    const vw = this.w / this.zoom;
+    const vh = this.h / this.zoom;
     const ww = this.worldW();
     const wh = this.worldH();
     const tx = vw >= ww ? (ww - vw) / 2 : clamp(this.ship.x - vw / 2, 0, ww - vw);
@@ -729,13 +961,13 @@ export class Game {
     this.camY += (ty - this.camY) * k;
   }
 
+  private refreshView(): void {
+    this.viewRight = this.camX + this.w / this.zoom;
+    this.viewBottom = this.camY + this.h / this.zoom;
+  }
+
   private inView(x: number, y: number, pad: number): boolean {
-    return (
-      x > this.camX - pad &&
-      x < this.camX + this.viewW() + pad &&
-      y > this.camY - pad &&
-      y < this.camY + this.viewH() + pad
-    );
+    return x > this.camX - pad && x < this.viewRight + pad && y > this.camY - pad && y < this.viewBottom + pad;
   }
 
   private rebuildStars(): void {
@@ -764,15 +996,30 @@ export class Game {
     this.sparks = [];
     this.pickups = [];
     this.pets = [];
-    this.ship = this.freshShip(SPACE_W * 0.5, SPACE_H * 0.5);
+    const home = PLANETS[0];
+    this.ship = this.freshShip(home.x + 5200, home.y - 800);
     this.snapCam();
     for (let i = 0; i < 6; i++) {
       this.spawnRock(1 + (i % 3), {
-        x: SPACE_W * 0.5 + (i - 2.5) * 90,
-        y: SPACE_H * 0.5 + ((i % 3) - 1) * 70,
+        x: this.ship.x + (i - 2.5) * 90,
+        y: this.ship.y + ((i % 3) - 1) * 70,
         away: false,
       });
     }
+  }
+
+  private bindPlaytestHooks(): void {
+    if (!this.runBoost || typeof window === "undefined") return;
+    const self = this;
+    Object.assign(window, {
+      reentryWarpStation: () => {
+        self.ship.x = STATION.x + STATION.radius + 180;
+        self.ship.y = STATION.y;
+        self.ship.vx = 0;
+        self.ship.vy = 0;
+        self.snapCam();
+      },
+    });
   }
 
   private announce(text: string): void {
@@ -811,12 +1058,15 @@ export class Game {
   private updatePrompt(): void {
     let next = "";
     if (this.zone === "space") {
-      const planet = this.nearestPlanet(REENTRY_RANGE);
-      if (planet) {
-        if (this.isUnlocked(planet.id)) next = `Re-enter ${planet.name}  —  E`;
-        else {
-          const need = neededKey(planet.id);
-          next = need ? lockPrompt(planet.name, need) : `Re-enter ${planet.name}  —  E`;
+      if (this.nearStation()) next = "Dock station — E";
+      else {
+        const planet = this.nearestPlanet(REENTRY_RANGE);
+        if (planet) {
+          if (this.isUnlocked(planet.id)) next = `Re-enter ${planet.name}  —  E`;
+          else {
+            const need = neededKey(planet.id);
+            next = need ? lockPrompt(planet.name, need) : `Re-enter ${planet.name}  —  E`;
+          }
         }
       }
     } else if (this.cavern && this.fuel <= 0) {
@@ -850,6 +1100,10 @@ export class Game {
 
   private tryTransit(): void {
     if (this.zone === "space") {
+      if (this.nearStation()) {
+        this.openShop();
+        return;
+      }
       const planet = this.nearestPlanet(REENTRY_RANGE);
       if (planet) this.beginReentry(planet);
       return;
@@ -1207,7 +1461,7 @@ export class Game {
           70,
         );
         sfxThrust();
-        this.thrustSfx = 0.07;
+        this.thrustSfx = 0.12;
       }
     } else if (this.zone === "cavern") {
       this.fuel = Math.max(0, this.fuel - FUEL_IDLE * dt);
@@ -1425,18 +1679,21 @@ export class Game {
   }
 
   private stepBullets(dt: number): void {
-    const next: Bullet[] = [];
+    const list = this.bullets;
     const ww = this.worldW();
     const wh = this.worldH();
-    for (const b of this.bullets) {
+    let w = 0;
+    for (let i = 0; i < list.length; i++) {
+      const b = list[i];
+      if (!b) continue;
       b.life -= dt;
       b.x += b.vx * dt;
       b.y += b.vy * dt;
-      if (b.x < 0 || b.x > ww || b.y < 0 || b.y > wh) continue;
+      if (b.life <= 0 || b.x < 0 || b.x > ww || b.y < 0 || b.y > wh) continue;
       if (this.cavern && circleHitsSolid(this.cavern, b.x, b.y, 2)) continue;
-      if (b.life > 0) next.push(b);
+      list[w++] = b;
     }
-    this.bullets = next;
+    list.length = w;
   }
 
   private stepRocks(dt: number): void {
@@ -1486,8 +1743,11 @@ export class Game {
 
   private stepPickups(dt: number): void {
     const ship = this.ship;
-    const next: Pickup[] = [];
-    for (const p of this.pickups) {
+    const list = this.pickups;
+    let w = 0;
+    for (let i = 0; i < list.length; i++) {
+      const p = list[i];
+      if (!p) continue;
       if (this.zone === "space") p.life -= dt;
       const d2 = dist2(p.x, p.y, ship.x, ship.y);
       if (d2 < 160 * 160) {
@@ -1506,32 +1766,43 @@ export class Game {
         p.x += p.vx * dt;
         p.y += p.vy * dt;
       }
-      if (p.life > 0) next.push(p);
+      if (p.life > 0) list[w++] = p;
     }
-    this.pickups = next;
+    list.length = w;
   }
 
   private stepSparks(dt: number): void {
-    const next: Spark[] = [];
-    for (const s of this.sparks) {
+    const list = this.sparks;
+    let w = 0;
+    for (let i = 0; i < list.length; i++) {
+      const s = list[i];
+      if (!s) continue;
       s.life -= dt;
       s.x += s.vx * dt;
       s.y += s.vy * dt;
       s.vx *= 0.97;
       s.vy *= 0.97;
-      if (s.life > 0) next.push(s);
+      if (s.life > 0) list[w++] = s;
     }
-    this.sparks = next.length > MAX_SPARKS ? next.slice(-MAX_SPARKS) : next;
+    if (w > MAX_SPARKS) {
+      const drop = w - MAX_SPARKS;
+      for (let i = 0; i < MAX_SPARKS; i++) list[i] = list[i + drop]!;
+      w = MAX_SPARKS;
+    }
+    list.length = w;
   }
 
   private stepFloaters(dt: number): void {
-    const next: Floater[] = [];
-    for (const f of this.floaters) {
+    const list = this.floaters;
+    let w = 0;
+    for (let i = 0; i < list.length; i++) {
+      const f = list[i];
+      if (!f) continue;
       f.life -= dt;
       f.y -= 28 * dt;
-      if (f.life > 0) next.push(f);
+      if (f.life > 0) list[w++] = f;
     }
-    this.floaters = next;
+    list.length = w;
   }
 
   private collide(): void {
@@ -1664,14 +1935,17 @@ export class Game {
       color = "#7ee7ff";
     } else if (p.kind === "rapid") {
       this.gear.rapid = true;
+      this.persistLoadout();
       label = "RAPID";
       color = "#ff7ad9";
     } else if (p.kind === "twin") {
       this.gear.twin = true;
+      this.persistLoadout();
       label = "TWIN";
       color = "#9ad8ff";
     } else if (p.kind === "spread") {
       this.gear.spread = true;
+      this.persistLoadout();
       label = "SPREAD";
       color = "#c9a6ff";
     } else if (p.kind === "pet") {
@@ -1683,17 +1957,8 @@ export class Game {
     this.markHud();
   }
 
-  private spawnPet(): boolean {
-    if (this.pets.length >= MAX_PETS) {
-      if (this.zone === "cavern") this.diveCargo += 25;
-      else {
-        this.runCredits += 25;
-        this.meta.credits += 25;
-        this.credits = this.meta.credits;
-        saveMeta(this.meta);
-      }
-      return false;
-    }
+  private addPetBody(): boolean {
+    if (this.pets.length >= MAX_PETS) return false;
     const ship = this.ship;
     this.pets.push({
       x: ship.x - 30,
@@ -1704,6 +1969,21 @@ export class Game {
       cooldown: 0.2,
       phase: Math.random() * Math.PI * 2,
     });
+    return true;
+  }
+
+  private spawnPet(): boolean {
+    if (!this.addPetBody()) {
+      if (this.zone === "cavern") this.diveCargo += 25;
+      else {
+        this.runCredits += 25;
+        this.meta.credits += 25;
+        this.credits = this.meta.credits;
+        saveMeta(this.meta);
+      }
+      return false;
+    }
+    this.persistLoadout();
     return true;
   }
 
@@ -1837,26 +2117,38 @@ export class Game {
     }
     ctx.fillStyle = "#000108";
     ctx.fillRect(0, 0, w, h);
-    const cool = ctx.createRadialGradient(w * 0.28, h * 0.22, 0, w * 0.28, h * 0.22, w * 0.85);
-    cool.addColorStop(0, "rgba(48, 72, 128, 0.38)");
-    cool.addColorStop(1, "rgba(0, 0, 0, 0)");
-    ctx.fillStyle = cool;
+    const key = `${w}x${h}`;
+    if (this.nebulaKey !== key || !this.nebulaCool || !this.nebulaWarm) {
+      const cool = ctx.createRadialGradient(w * 0.28, h * 0.22, 0, w * 0.28, h * 0.22, w * 0.85);
+      cool.addColorStop(0, "rgba(48, 72, 128, 0.38)");
+      cool.addColorStop(1, "rgba(0, 0, 0, 0)");
+      const warm = ctx.createRadialGradient(w * 0.78, h * 0.7, 0, w * 0.78, h * 0.7, w * 0.7);
+      warm.addColorStop(0, "rgba(90, 32, 70, 0.28)");
+      warm.addColorStop(1, "rgba(0, 0, 0, 0)");
+      this.nebulaCool = cool;
+      this.nebulaWarm = warm;
+      this.nebulaKey = key;
+    }
+    ctx.fillStyle = this.nebulaCool;
     ctx.fillRect(0, 0, w, h);
-    const warm = ctx.createRadialGradient(w * 0.78, h * 0.7, 0, w * 0.78, h * 0.7, w * 0.7);
-    warm.addColorStop(0, "rgba(90, 32, 70, 0.28)");
-    warm.addColorStop(1, "rgba(0, 0, 0, 0)");
-    ctx.fillStyle = warm;
+    ctx.fillStyle = this.nebulaWarm;
     ctx.fillRect(0, 0, w, h);
     this.drawStars(ctx);
   }
 
   private drawStars(ctx: CanvasRenderingContext2D): void {
     const t = performance.now() * 0.001;
+    const camX = this.camX;
+    const camY = this.camY;
+    const sw = this.w;
+    const sh = this.h;
     for (const star of this.stars) {
-      const x = ((star.x * this.w - this.camX * star.z * 0.03) % this.w + this.w) % this.w;
-      const y = ((star.y * this.h - this.camY * star.z * 0.03) % this.h + this.h) % this.h;
-      const wave = 0.5 + 0.5 * Math.sin(t * star.speed + star.phase);
-      const blink = Math.pow(wave, 3);
+      const x = ((star.x * sw - camX * star.z * 0.03) % sw + sw) % sw;
+      const y = ((star.y * sh - camY * star.z * 0.03) % sh + sh) % sh;
+      let u = t * star.speed + star.phase;
+      u = u * 0.159154943 - Math.floor(u * 0.159154943);
+      const wave = u < 0.5 ? u * 2 : 2 - u * 2;
+      const blink = wave * wave;
       const alpha = (0.12 + star.z * 0.55) * (0.2 + 1.15 * blink);
       ctx.globalAlpha = clamp(alpha, 0.04, 1);
       ctx.fillStyle = star.tint;
@@ -1884,16 +2176,57 @@ export class Game {
       ctx.arc(planet.x - planet.radius * 0.28, planet.y - planet.radius * 0.28, planet.radius * 0.42, 0, Math.PI * 2);
       ctx.fillStyle = "rgba(255,255,255,0.16)";
       ctx.fill();
-      ctx.fillStyle = "#eef3ff";
-      ctx.font = `700 ${this.worldFontPx(16)}px sans-serif`;
-      ctx.textAlign = "center";
-      ctx.fillText(planet.name, planet.x, planet.y + planet.radius + 22 / this.zoom);
-      if (!unlocked) {
-        ctx.fillStyle = "#ffb36b";
-        ctx.font = `700 ${this.worldFontPx(13)}px sans-serif`;
-        ctx.fillText("LOCKED", planet.x, planet.y + planet.radius + 40 / this.zoom);
+      if (planet.radius * this.zoom >= 10) {
+        ctx.fillStyle = "#eef3ff";
+        ctx.font = `700 ${this.worldFontPx(16)}px sans-serif`;
+        ctx.textAlign = "center";
+        ctx.fillText(planet.name, planet.x, planet.y + planet.radius + 22 / this.zoom);
+        if (!unlocked) {
+          ctx.fillStyle = "#ffb36b";
+          ctx.font = `700 ${this.worldFontPx(13)}px sans-serif`;
+          ctx.fillText("LOCKED", planet.x, planet.y + planet.radius + 40 / this.zoom);
+        }
       }
       ctx.restore();
+    }
+  }
+
+  private drawStation(ctx: CanvasRenderingContext2D): void {
+    if (!this.inView(STATION.x, STATION.y, STATION.radius + 80)) return;
+    const t = performance.now() * 0.001;
+    ctx.save();
+    ctx.translate(STATION.x, STATION.y);
+    ctx.strokeStyle = "rgba(126, 231, 255, 0.55)";
+    ctx.lineWidth = Math.max(1.6, 3.2 / this.zoom);
+    ctx.beginPath();
+    ctx.arc(0, 0, STATION.radius + 18, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = "#7ee7ff";
+    ctx.beginPath();
+    ctx.arc(0, 0, STATION.radius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.rotate(t * 0.35);
+    ctx.strokeStyle = "#ff7ad9";
+    ctx.lineWidth = Math.max(1.2, 2.4 / this.zoom);
+    ctx.strokeRect(-STATION.radius * 0.38, -STATION.radius * 0.22, STATION.radius * 0.76, STATION.radius * 0.44);
+    ctx.beginPath();
+    ctx.moveTo(-STATION.radius * 0.92, 0);
+    ctx.lineTo(-STATION.radius * 0.38, 0);
+    ctx.moveTo(STATION.radius * 0.38, 0);
+    ctx.lineTo(STATION.radius * 0.92, 0);
+    ctx.stroke();
+    ctx.fillStyle = "#0b1218";
+    ctx.beginPath();
+    ctx.arc(0, 0, STATION.radius * 0.28, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#ffe08a";
+    ctx.stroke();
+    ctx.restore();
+    if (STATION.radius * this.zoom >= 10) {
+      ctx.fillStyle = "#7ee7ff";
+      ctx.font = `700 ${this.worldFontPx(15)}px sans-serif`;
+      ctx.textAlign = "center";
+      ctx.fillText(STATION.name, STATION.x, STATION.y + STATION.radius + 26 / this.zoom);
     }
   }
 
@@ -1902,13 +2235,16 @@ export class Game {
     ctx.translate(rock.x, rock.y);
     ctx.rotate(rock.rot);
     ctx.beginPath();
-    rock.verts.forEach((v, i) => {
-      const a = (i / rock.verts.length) * Math.PI * 2;
+    const verts = rock.verts;
+    const n = verts.length;
+    for (let i = 0; i < n; i++) {
+      const v = verts[i] ?? 1;
+      const a = (i / n) * Math.PI * 2;
       const x = Math.cos(a) * rock.radius * v;
       const y = Math.sin(a) * rock.radius * v;
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
-    });
+    }
     ctx.closePath();
     ctx.fillStyle = this.cavern ? "#0a0c10" : "#07080c";
     ctx.fill();
@@ -1926,17 +2262,7 @@ export class Game {
   }
 
   private drawPickup(ctx: CanvasRenderingContext2D, p: Pickup): void {
-    const palette: Record<LootKind, { color: string; mark: string }> = {
-      credits: { color: "#ffd36b", mark: "C" },
-      ore: { color: "#ffb36b", mark: "O" },
-      energy: { color: "#7ee7ff", mark: "E" },
-      rapid: { color: "#ff7ad9", mark: "R" },
-      twin: { color: "#9ad8ff", mark: "T" },
-      spread: { color: "#c9a6ff", mark: "W" },
-      pet: { color: "#7dffb1", mark: "P" },
-      fuel: { color: "#ffe08a", mark: "F" },
-    };
-    const look = palette[p.kind];
+    const look = PICKUP_LOOK[p.kind];
     const pulse = 9 + Math.sin(performance.now() / 180) * 2;
     ctx.save();
     ctx.translate(p.x, p.y);
@@ -1953,11 +2279,13 @@ export class Game {
       ctx.arc(0, 0, pulse, 0, Math.PI * 2);
     }
     ctx.stroke();
-    ctx.fillStyle = look.color;
-    ctx.font = "700 9px sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(look.mark, 0, 1);
+    if (this.zoom >= 0.35) {
+      ctx.fillStyle = look.color;
+      ctx.font = "700 9px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(look.mark, 0, 1);
+    }
     ctx.restore();
   }
 
@@ -2034,30 +2362,44 @@ export class Game {
 
   private drawWorldNav(ctx: CanvasRenderingContext2D): void {
     if (this.mode === "menu") return;
+    let tx: number;
+    let ty: number;
+    let color: string;
     if (this.zone === "cavern" && this.boss?.alive) {
-      ctx.save();
-      ctx.strokeStyle = this.boss.def.color;
-      ctx.globalAlpha = 0.5;
-      ctx.lineWidth = Math.max(1.5, 3 / this.zoom);
-      ctx.setLineDash([12 / this.zoom, 10 / this.zoom]);
-      ctx.beginPath();
-      ctx.moveTo(this.ship.x, this.ship.y);
-      ctx.lineTo(this.boss.x, this.boss.y);
-      ctx.stroke();
-      ctx.restore();
+      tx = this.boss.x;
+      ty = this.boss.y;
+      color = this.boss.def.color;
+    } else if (this.zone === "space") {
+      const poi = this.closestPoi();
+      tx = poi.x;
+      ty = poi.y;
+      color = poi.color;
+    } else {
       return;
     }
-    if (this.zone !== "space") return;
-    const planet = this.closestPlanet();
+    const x0 = this.ship.x;
+    const y0 = this.ship.y;
+    const dx = tx - x0;
+    const dy = ty - y0;
+    const len = Math.hypot(dx, dy);
+    if (len < 8) return;
+    // Never stroke a megapixel dashed line — only a viewport-length ray.
+    const reach = Math.hypot(this.w / this.zoom, this.h / this.zoom) * 0.7;
+    const t = Math.min(1, reach / len);
+    const x1 = x0 + dx * t;
+    const y1 = y0 + dy * t;
     ctx.save();
-    ctx.strokeStyle = planet.color;
+    ctx.strokeStyle = color;
     ctx.globalAlpha = 0.55;
     ctx.lineWidth = Math.max(1.5, 3 / this.zoom);
-    ctx.setLineDash([12 / this.zoom, 10 / this.zoom]);
+    const dash = Math.max(8, 12 / this.zoom);
+    const gap = Math.max(6, 10 / this.zoom);
+    ctx.setLineDash([dash, gap]);
     ctx.beginPath();
-    ctx.moveTo(this.ship.x, this.ship.y);
-    ctx.lineTo(planet.x, planet.y);
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y1);
     ctx.stroke();
+    ctx.setLineDash([]);
     ctx.restore();
   }
 
@@ -2078,14 +2420,14 @@ export class Game {
       return;
     }
     if (this.zone !== "space") return;
-    const planet = this.closestPlanet();
-    const sx = (planet.x - this.camX) * this.zoom;
-    const sy = (planet.y - this.camY) * this.zoom;
+    const poi = this.closestPoi();
+    const sx = (poi.x - this.camX) * this.zoom;
+    const sy = (poi.y - this.camY) * this.zoom;
     const pad = 56;
     const onScreen =
       sx > pad && sx < this.w - pad && sy > pad && sy < this.h - pad - 140;
-    const dx = planet.x - this.ship.x;
-    const dy = planet.y - this.ship.y;
+    const dx = poi.x - this.ship.x;
+    const dy = poi.y - this.ship.y;
     const dist = Math.hypot(dx, dy);
     if (onScreen) {
       // Name / LOCKED already come from drawPlanets. Re-entry is the HTML
@@ -2093,7 +2435,7 @@ export class Game {
       // at ZOOM_MIN. Keep the off-screen arrow + distance only.
       return;
     }
-    this.drawEdgeMarker(ctx, planet.x, planet.y, planet.color, `${planet.name}  ${Math.round(dist)}`);
+    this.drawEdgeMarker(ctx, poi.x, poi.y, poi.color, `${poi.name}  ${Math.round(dist)}`);
   }
 
   /** World-space font that stays a fixed screen-pixel size at any zoom. */
@@ -2176,33 +2518,62 @@ export class Game {
       const sx = mw / SPACE_W;
       const sy = mh / SPACE_H;
       ctx.strokeStyle = "rgba(238, 243, 255, 0.22)";
-      ctx.strokeRect(x + this.camX * sx, y + this.camY * sy, this.viewW() * sx, this.viewH() * sy);
+      const vw = Math.max(4, this.viewW() * sx);
+      const vh = Math.max(3, this.viewH() * sy);
+      ctx.strokeRect(x + this.camX * sx, y + this.camY * sy, vw, vh);
       for (const planet of PLANETS) {
         ctx.fillStyle = planet.color;
         ctx.beginPath();
         ctx.arc(x + planet.x * sx, y + planet.y * sy, 4, 0, Math.PI * 2);
         ctx.fill();
       }
+      const hx = x + STATION.x * sx;
+      const hy = y + STATION.y * sy;
+      ctx.save();
+      ctx.translate(hx, hy);
+      ctx.rotate(Math.PI / 4);
+      ctx.strokeStyle = "#7ee7ff";
+      ctx.fillStyle = "rgba(126, 231, 255, 0.35)";
+      ctx.lineWidth = 1.4;
+      ctx.fillRect(-4, -4, 8, 8);
+      ctx.strokeRect(-4, -4, 8, 8);
+      ctx.restore();
+      ctx.fillStyle = "#7ee7ff";
+      ctx.font = "700 8px sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText("H", hx + 6, hy - 4);
       ctx.fillStyle = "#9aa6bf";
-      for (const rock of this.rocks) {
+      const rocks = this.rocks;
+      const n = rocks.length;
+      const step = n > 20 ? Math.ceil(n / 20) : 1;
+      for (let i = 0; i < n; i += step) {
+        const rock = rocks[i];
+        if (!rock) continue;
         ctx.fillRect(x + rock.x * sx, y + rock.y * sy, 2, 2);
       }
       ctx.fillStyle = "#7ee7ff";
       ctx.beginPath();
       ctx.arc(x + this.ship.x * sx, y + this.ship.y * sy, 3, 0, Math.PI * 2);
       ctx.fill();
-      const nav = this.closestPlanet();
-      ctx.strokeStyle = "#7ee7ff";
+      const nav = this.closestPoi();
+      ctx.strokeStyle = nav.color;
       ctx.lineWidth = 2.4;
       ctx.beginPath();
       ctx.moveTo(x + this.ship.x * sx, y + this.ship.y * sy);
       ctx.lineTo(x + nav.x * sx, y + nav.y * sy);
       ctx.stroke();
-      ctx.fillStyle = nav.color;
-      ctx.beginPath();
-      ctx.arc(x + nav.x * sx, y + nav.y * sy, 5, 0, Math.PI * 2);
-      ctx.fill();
     }
+    ctx.restore();
+  }
+
+  private drawFps(ctx: CanvasRenderingContext2D): void {
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = "#eef3ff";
+    ctx.font = "11px ui-monospace, SFMono-Regular, Menlo, monospace";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "top";
+    ctx.fillText(String(this.fpsEma | 0), this.w - 10, 8);
     ctx.restore();
   }
 }

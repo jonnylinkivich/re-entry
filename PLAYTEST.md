@@ -4,20 +4,20 @@ Build first (`npm run build`). Dev server: `npm run dev` → `http://localhost:4
 
 Optional query flags (run-local, not required for a real playthrough):
 
-- `?playtest=1` — larger fuel/energy for the run, at least 40 credits so the rescue fee is payable
-- `?unlock=1` — treat Cinder/Rime/Mycel/Vesper keys as owned so Ashen opens (later worlds still gated)
+- `?playtest=1` — larger fuel/energy for the run, at least 80 credits so Hab-7 has something to sell; also exposes `reentryWarpStation()` in the console
+- `?unlock=1` — treat all eight planet keys as owned so later worlds open
 - Combine: `http://localhost:47331/?playtest=1`
 
 ## Controls (must still work)
 
-`A`/`D` turn · `W`/`S` thrust · `Space` shoot · `E` re-enter/launch · `Shift` shield · `R` rescue when stranded · `Esc` pause · `M` mute
+`A`/`D` turn · `W`/`S` thrust · `Space` shoot · `E` re-enter/launch/dock · `Shift` shield · `R` rescue when stranded · `Esc` pause / close shop · `M` mute
 
 Hold `W`/`A`/`D` — tapping thrust does nothing useful. Click the canvas after **Begin re-entry** so keys register.
 
 ## Loop checks
 
 1. **Menu → space**  
-   Begin re-entry. You spawn **near Cinder but outside** the re-entry halo — no `Re-enter Cinder — E` on frame 1. HUD shows energy bar, objective **Defeat Ember Warden**. Nav arrow + distance still point at Cinder. Zoom out: planets are sparse dots on a 128k × 96k map. Fly away — **no gravity** in open space (a short well only when hugging a planet, inside `radius * 2`).
+   Begin re-entry. You spawn **near Cinder but outside** the re-entry halo — no `Re-enter Cinder — E` on frame 1. HUD shows energy bar, objective **Defeat Ember Warden**. Nav arrow + distance still point at Cinder. Zoom out: planets are sparse dots on a 640k × 480k map. Radar shows eight planet discs plus Hab-7’s cyan diamond (**H**). Fly away — **no gravity** in open space (a short well only when hugging a planet, inside `radius * 2`).
 
 2. **Gate prompt**  
    Long travel to Rime (empty space). Without a key, up close: `RIME LOCKED — need Cinder Key`. `E` must not start a dive. Same style for later worlds (`ASHEN LOCKED — need Vesper Key`, etc.).
@@ -37,17 +37,20 @@ Hold `W`/`A`/`D` — tapping thrust does nothing useful. Click the canvas after 
    After Cinder Key, Rime opens. Repeat: Frost Crown → Rime Key + 75% salvage. Sporeheart → Mycel Key + 100% salvage. Night Veil → Vesper Key → **Ashen**. Then Ash Colossus → Brine, Tide Serpent → Thorn, Bramble King → Helix, Coil Warden is the finale. Original four-world loop still verifies the same way.
 
 7. **Persist**  
-   Refresh. Credits, keys, tank, salvage, high score remain (`reentry-save`). Guns reset between full runs but persist space ↔ planet inside one run.
+   Refresh. Credits, keys, tank, salvage, shop guns/pets, high score remain (`reentry-save`).
+
+8b. **Hab-7 dock**  
+   Find the cyan diamond on the minimap (northeast of Cinder). Fly near Hab-7 → HTML prompt `Dock station — E`. `E` or click opens the neon shop overlay. Prices show; broke rows name the missing credits. With `?playtest=1` (80 CR) buy Twin (35) or a tank (30). Esc / Leave returns to space; WASD / Space still work. Station stays in space when you dive.
 
 8. **Soft-lock**  
    Locked planet always names the missing key. Re-entry is the HTML `#prompt` only — no canvas `{name} · E`. Combo `xN` sits under the top HUD.
 
 9. **Empty space / large map**  
-   Map is **128000 × 96000**. Eight planets: Cinder → Rime → Mycel → Vesper → Ashen → Brine → Thorn → Helix (each needs the previous key).  
+   Map is **640000 × 480000** (20× the old 32k axes, 400× area). Eight planets: Cinder → Rime → Mycel → Vesper → Ashen → Brine → Thorn → Helix (each needs the previous key).  
    - Begin: no re-entry prompt.  
-   - Zoom out (`ZOOM_MIN` 0.015): several planet dots + lots of void. Radar (bottom left) shows all eight.  
+   - Zoom out (`ZOOM_MIN` 0.015): several planet dots + lots of void. Radar shows all eight plus Hab-7’s diamond.  
    - Fly away from Cinder: ship coasts with **no gravity**. HUD arrow still names Cinder + distance.  
-   - Reach another world only after a long empty-space run (tens of seconds at full thrust). Re-entry prompt appears only in a local halo (`radius + 520`).
+   - Reach another world only after a long empty-space run. Re-entry prompt appears only in a local halo.
 
 ---
 
@@ -90,11 +93,11 @@ Recorded against the running Vite server on `:47331` (`?playtest=1`) while the p
 - Cine + cavern scanlines + boss nav line are punchy.
 - Space combat lacks scale: ship is a few pixels unless you scroll-zoom in, at which point rocks leave frame.
 - Combo is styled (`#combo` in `style.css`) but easy to miss under the objective pill.
-- Credits bank on launch/rescue; there is still no shop to spend them.
+- Credits bank on launch/rescue and spend at Hab-7.
 
 ### Performance
 
-- Canvas 128k×96k starfield (stars are screen-space) + cavern tiles stayed smooth in 1920 capture. Rocks still spawn near the ship (`MAX_ROCKS` 40). No hitch noted during cine or boss.
+- Canvas 640k×480k starfield (stars are screen-space) + cavern tiles. Rocks still spawn near the ship (`MAX_ROCKS` 40).
 
 ---
 
@@ -117,7 +120,7 @@ Verified against this branch after the progression-loop land. Original main-bran
 | Cine skip from held Space | `game.ts` `key()` — `Space` skips cine. Clear `keys` / ignore held Space for ~0.4s when `beginReentry` starts. |
 | Fuel scramble vs climb fantasy | `meta.ts` `FUEL_THRUST` / idle drain vs `tankMax()` 40. Easy to strand before Ember Warden without `?playtest=1`. Either a shaft fuel pad or a first-dive tank bump. |
 | Combo vs objective overlap | `style.css` `#combo` `top: 72px` sits under `#objective`. |
-| No spend sink for credits | Credits persist (`meta.ts` `reentry-credits`) and pay rescue fees only. Shop / reroll still missing. |
+| No spend sink for credits | **Fixed.** Hab-7 shop spends banked credits on guns / pets / tanks / salvage / refills. |
 | Mute has no persistent control | `KeyM` works; no button / icon. `setMuted` is used. |
 
 ### P2
@@ -126,7 +129,7 @@ Verified against this branch after the progression-loop land. Original main-bran
 | --- | --- |
 | No music | `audio.ts` is SFX-only. |
 | Mobile is Fire-only | **Fixed** with P0 touch pads (L / Thrust / R / Rev + Fire). |
-| No shop for banked credits | See P1. |
+| No shop for banked credits | **Fixed.** Hab-7 dock / shop overlay. |
 | Vite `base` | **Done for relative deploy:** `vite.config.ts` `base: "./"`. Root hosting still works; GitHub Pages project pages should keep `base: '/re-entry/'` or `./`. |
 
 ### Fixed since original main playtest (do not re-open)

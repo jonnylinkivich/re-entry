@@ -31,6 +31,17 @@ const GATE_OBJECTIVE: { key: string; text: string }[] = [
   { key: "helix", text: "Defeat Coil Warden" },
 ];
 
+export const ALL_PLANET_KEYS: PlanetId[] = [
+  "cinder",
+  "rime",
+  "mycel",
+  "vesper",
+  "ashen",
+  "brine",
+  "thorn",
+  "helix",
+];
+
 export type MetaState = {
   credits: number;
   keys: string[];
@@ -39,6 +50,10 @@ export type MetaState = {
   salvageRate: number;
   high: number;
   muted: boolean;
+  rapid: boolean;
+  twin: boolean;
+  spread: boolean;
+  pets: number;
 };
 
 export const START_MAX_FUEL = 40;
@@ -64,6 +79,10 @@ const DEFAULTS: MetaState = {
   salvageRate: START_SALVAGE,
   high: 0,
   muted: false,
+  rapid: false,
+  twin: false,
+  spread: false,
+  pets: 0,
 };
 
 function readNumber(key: string): number {
@@ -120,6 +139,10 @@ export function normalizeMeta(partial: Partial<MetaState>): MetaState {
     salvageRate: clamp(partial.salvageRate ?? DEFAULTS.salvageRate, 0.5, 1),
     high: Math.max(0, Math.floor(partial.high ?? DEFAULTS.high)),
     muted: Boolean(partial.muted),
+    rapid: Boolean(partial.rapid),
+    twin: Boolean(partial.twin),
+    spread: Boolean(partial.spread),
+    pets: clamp(Math.floor(partial.pets ?? 0), 0, 2),
   };
 }
 

@@ -23,6 +23,10 @@ const finalLine = must(document.querySelector<HTMLElement>("#final-line"), "#fin
 const playBtn = must(document.querySelector<HTMLButtonElement>("#play"), "#play");
 const resumeBtn = must(document.querySelector<HTMLButtonElement>("#resume"), "#resume");
 const retryBtn = must(document.querySelector<HTMLButtonElement>("#retry"), "#retry");
+const shopLeaveBtn = must(document.querySelector<HTMLButtonElement>("#shop-leave"), "#shop-leave");
+const shopCreditsEl = must(document.querySelector<HTMLElement>("#shop-credits"), "#shop-credits");
+const shopListEl = must(document.querySelector<HTMLElement>("#shop-list"), "#shop-list");
+const shopHintEl = must(document.querySelector<HTMLElement>("#shop-hint"), "#shop-hint");
 const fireBtn = must(document.querySelector<HTMLButtonElement>("#fire"), "#fire");
 const padsEl = must(document.querySelector<HTMLElement>("#pads"), "#pads");
 const promptEl = must(document.querySelector<HTMLElement>("#prompt"), "#prompt");
@@ -60,31 +64,67 @@ function showScreen(mode: Mode | "error"): void {
   padsEl.hidden = !showPads;
 }
 
-function renderHud(snapshot: HudSnapshot): void {
-  scoreEl.textContent = String(snapshot.score);
-  waveEl.textContent = snapshot.sector;
-  bestEl.textContent = String(snapshot.high);
-  creditsEl.textContent = String(snapshot.credits);
-  finalScore.textContent = String(snapshot.score);
-  finalCredits.textContent = String(snapshot.runCredits);
-  finalLine.textContent = snapshot.finalLine;
-  comboEl.hidden = snapshot.mode !== "play" || snapshot.combo < 2;
-  comboEl.textContent = `x${snapshot.combo}`;
-  loadoutEl.hidden = snapshot.loadout.length === 0;
+let hudLives = -1;
+let hudMaxLives = -1;
+let hudLoadoutKey = "";
+let lastPrompt = "\0";
+let lastObjective = "\0";
+let lastCargo = -1;
+let lastFuelW = "";
+let lastEnergyW = "";
+let lastSector = "";
+let lastScore = -1;
+let lastCredits = -1;
+
+function renderLoadout(tags: readonly string[]): void {
+  const key = tags.join("|");
+  if (key === hudLoadoutKey) return;
+  hudLoadoutKey = key;
+  loadoutEl.hidden = tags.length === 0;
   loadoutEl.replaceChildren();
-  for (const tag of snapshot.loadout) {
+  for (const tag of tags) {
     const chip = document.createElement("span");
     chip.className = "chip";
     chip.textContent = tag;
     loadoutEl.append(chip);
   }
+}
+
+function renderLives(lives: number, maxLives: number): void {
+  if (lives === hudLives && maxLives === hudMaxLives) return;
+  hudLives = lives;
+  hudMaxLives = maxLives;
   livesEl.replaceChildren();
-  for (let i = 0; i < snapshot.maxLives; i++) {
+  for (let i = 0; i < maxLives; i++) {
     const pip = document.createElement("span");
-    pip.className = i < snapshot.lives ? "life" : "life is-lost";
+    pip.className = i < lives ? "life" : "life is-lost";
     livesEl.append(pip);
   }
+}
+
+function renderHud(snapshot: HudSnapshot): void {
+  if (snapshot.score !== lastScore) {
+    lastScore = snapshot.score;
+    scoreEl.textContent = String(snapshot.score);
+    finalScore.textContent = String(snapshot.score);
+  }
+  if (snapshot.sector !== lastSector) {
+    lastSector = snapshot.sector;
+    waveEl.textContent = snapshot.sector;
+  }
+  bestEl.textContent = String(snapshot.high);
+  if (snapshot.credits !== lastCredits) {
+    lastCredits = snapshot.credits;
+    creditsEl.textContent = String(snapshot.credits);
+    finalCredits.textContent = String(snapshot.runCredits);
+  }
+  finalLine.textContent = snapshot.finalLine;
+  comboEl.hidden = snapshot.mode !== "play" || snapshot.combo < 2;
+  comboEl.textContent = `x${snapshot.combo}`;
+  renderLoadout(snapshot.loadout);
+  renderLives(snapshot.lives, snapshot.maxLives);
   showScreen(snapshot.mode);
+  if (snapshot.mode === "shop") renderShop(snapshot);
   syncLiveHud(snapshot);
 }
 
@@ -92,18 +132,74 @@ function syncLiveHud(snapshot: HudSnapshot): void {
   const playing = snapshot.mode === "play";
   hud.hidden = snapshot.mode === "menu" || snapshot.mode === "cine";
   overlay.hidden = snapshot.mode === "play" || snapshot.mode === "cine";
-  promptEl.hidden = !playing || snapshot.prompt.length === 0;
-  promptEl.textContent = snapshot.prompt;
-  objectiveEl.hidden = !playing || snapshot.objective.length === 0;
-  objectiveEl.textContent = snapshot.objective;
+  const hidePrompt = !playing || snapshot.prompt.length === 0;
+  if (promptEl.hidden !== hidePrompt) promptEl.hidden = hidePrompt;
+  if (snapshot.prompt !== lastPrompt) {
+    lastPrompt = snapshot.prompt;
+    promptEl.textContent = snapshot.prompt;
+  }
+  promptEl.classList.toggle("is-dock", snapshot.promptDock);
+  const hideObj = !playing || snapshot.objective.length === 0;
+  if (objectiveEl.hidden !== hideObj) objectiveEl.hidden = hideObj;
+  if (snapshot.objective !== lastObjective) {
+    lastObjective = snapshot.objective;
+    objectiveEl.textContent = snapshot.objective;
+  }
   cargoWrap.hidden = !playing || snapshot.zone !== "cavern";
-  cargoEl.textContent = String(snapshot.cargo);
+  if (snapshot.cargo !== lastCargo) {
+    lastCargo = snapshot.cargo;
+    cargoEl.textContent = String(snapshot.cargo);
+  }
   fuelWrap.hidden = !playing || snapshot.zone !== "cavern";
   const fuelPct = snapshot.maxFuel > 0 ? (snapshot.fuel / snapshot.maxFuel) * 100 : 0;
-  fuelBar.style.width = `${clamp(fuelPct, 0, 100)}%`;
+  const fuelW = `${clamp(fuelPct, 0, 100)}%`;
+  if (fuelW !== lastFuelW) {
+    lastFuelW = fuelW;
+    fuelBar.style.width = fuelW;
+  }
   energyWrap.hidden = !playing;
   const energyPct = snapshot.maxEnergy > 0 ? (snapshot.energy / snapshot.maxEnergy) * 100 : 0;
-  energyBar.style.width = `${clamp(energyPct, 0, 100)}%`;
+  const energyW = `${clamp(energyPct, 0, 100)}%`;
+  if (energyW !== lastEnergyW) {
+    lastEnergyW = energyW;
+    energyBar.style.width = energyW;
+  }
+}
+
+function renderShop(snapshot: HudSnapshot): void {
+  shopCreditsEl.textContent = String(snapshot.credits);
+  shopHintEl.hidden = snapshot.shopHint.length === 0;
+  shopHintEl.textContent = snapshot.shopHint;
+  shopListEl.replaceChildren();
+  for (const row of snapshot.shopRows) {
+    const li = document.createElement("li");
+    li.className = "shop-row";
+    const copy = document.createElement("div");
+    copy.className = "shop-row-copy";
+    const title = document.createElement("strong");
+    title.textContent = row.name;
+    const blurb = document.createElement("span");
+    blurb.textContent = row.blurb;
+    copy.append(title, blurb);
+    const buyWrap = document.createElement("div");
+    buyWrap.className = "shop-row-buy";
+    const price = document.createElement("span");
+    price.className = row.status === "broke" ? "shop-price is-miss" : "shop-price";
+    price.textContent = row.detail;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "shop-buy";
+    btn.textContent = row.status === "ready" ? "Buy" : row.status === "broke" ? "Need CR" : row.status;
+    btn.disabled = row.status !== "ready";
+    btn.addEventListener("click", () => {
+      game.buyShop(row.id);
+      btn.blur();
+      renderHud(game.hud());
+    });
+    buyWrap.append(price, btn);
+    li.append(copy, buyWrap);
+    shopListEl.append(li);
+  }
 }
 
 function clamp(n: number, a: number, b: number): number {
@@ -134,6 +230,7 @@ function grabPlayFocus(): void {
   playBtn.blur();
   retryBtn.blur();
   resumeBtn.blur();
+  shopLeaveBtn.blur();
   fireBtn.blur();
   for (const pad of padsEl.querySelectorAll<HTMLButtonElement>(".pad-btn")) pad.blur();
   window.focus();
@@ -151,6 +248,10 @@ retryBtn.addEventListener("click", beginRun);
 resumeBtn.addEventListener("click", () => {
   unlockAudio();
   game.resume();
+  grabPlayFocus();
+});
+shopLeaveBtn.addEventListener("click", () => {
+  game.closeShop();
   grabPlayFocus();
 });
 
