@@ -21,6 +21,8 @@ export type Cavern = {
   solid: Uint8Array;
   spawnX: number;
   spawnY: number;
+  bossX: number;
+  bossY: number;
   fill: string;
   stroke: string;
   deep: string;
@@ -38,6 +40,7 @@ export type PlanetDef = {
   fill: string;
   stroke: string;
   deep: string;
+  /** Always 0. Caverns and space are thrust-only — no down-pull or proximity well. */
   gravity: number;
   cols: number;
   rows: number;
@@ -50,22 +53,50 @@ export type PlanetDef = {
   fuel: number;
 };
 
-export const SPACE_W = 32000;
-export const SPACE_H = 24000;
+/**
+ * Vanilla field was 32000 × 24000. Nick asked 200× larger.
+ * Linear 200× (6.4M × 4.8M) jitters under canvas float32 at ZOOM_MAX.
+ * 20× per axis = 640000 × 480000 is 400× area (above the 200×-area floor)
+ * and stays stable for camera / minimap / zoom.
+ */
+export const SPACE_W = 640000;
+export const SPACE_H = 480000;
+
+/** Distance from a planet's surface to the opening spawn (outside the re-entry halo). */
+export const SPAWN_CLEARANCE = 2200;
+
+export type StationDef = {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  radius: number;
+};
+
+/** Mid-map hub, a short hop off Cinder — not a planet cavern. */
+export const STATION: StationDef = {
+  id: "hab7",
+  name: "Hab-7",
+  x: 126000,
+  y: 216000,
+  radius: 96,
+};
+
+export const DOCK_RANGE = 420;
 
 export const PLANETS: PlanetDef[] = [
   {
     id: "cinder",
     name: "Cinder",
-    x: 14800,
-    y: 11400,
+    x: 110000,
+    y: 230000,
     radius: 240,
     color: "#ff6b3d",
     atmosphere: "rgba(255, 90, 40, 0.18)",
     fill: "#3a1610",
     stroke: "#e06030",
     deep: "#140806",
-    gravity: 460,
+    gravity: 0,
     cols: 200,
     rows: 150,
     tile: 36,
@@ -79,15 +110,15 @@ export const PLANETS: PlanetDef[] = [
   {
     id: "rime",
     name: "Rime",
-    x: 25200,
-    y: 5600,
+    x: 310000,
+    y: 60000,
     radius: 280,
     color: "#9ad8ff",
     atmosphere: "rgba(140, 210, 255, 0.16)",
     fill: "#102436",
     stroke: "#7ec8e8",
     deep: "#071018",
-    gravity: 210,
+    gravity: 0,
     cols: 220,
     rows: 140,
     tile: 36,
@@ -101,15 +132,15 @@ export const PLANETS: PlanetDef[] = [
   {
     id: "mycel",
     name: "Mycel",
-    x: 7800,
-    y: 18600,
+    x: 70000,
+    y: 420000,
     radius: 250,
     color: "#6fce7a",
     atmosphere: "rgba(90, 200, 110, 0.16)",
     fill: "#102414",
     stroke: "#62c56e",
     deep: "#07140c",
-    gravity: 300,
+    gravity: 0,
     cols: 210,
     rows: 160,
     tile: 36,
@@ -123,15 +154,15 @@ export const PLANETS: PlanetDef[] = [
   {
     id: "vesper",
     name: "Vesper",
-    x: 24800,
-    y: 18200,
+    x: 510000,
+    y: 80000,
     radius: 300,
     color: "#c9a6ff",
     atmosphere: "rgba(180, 120, 255, 0.16)",
     fill: "#1a1028",
     stroke: "#b07cff",
     deep: "#0c0814",
-    gravity: 390,
+    gravity: 0,
     cols: 240,
     rows: 170,
     tile: 36,
@@ -141,6 +172,94 @@ export const PLANETS: PlanetDef[] = [
     pods: 18,
     loot: 20,
     fuel: 9,
+  },
+  {
+    id: "ashen",
+    name: "Ashen",
+    x: 240000,
+    y: 360000,
+    radius: 260,
+    color: "#ff8a4d",
+    atmosphere: "rgba(255, 120, 50, 0.16)",
+    fill: "#2a120c",
+    stroke: "#e07038",
+    deep: "#120806",
+    gravity: 0,
+    cols: 200,
+    rows: 155,
+    tile: 36,
+    seed: 55055,
+    walks: 18,
+    carve: 2,
+    pods: 13,
+    loot: 16,
+    fuel: 10,
+  },
+  {
+    id: "brine",
+    name: "Brine",
+    x: 580000,
+    y: 250000,
+    radius: 290,
+    color: "#3ec8c8",
+    atmosphere: "rgba(50, 210, 210, 0.16)",
+    fill: "#0c2428",
+    stroke: "#3ec8c8",
+    deep: "#061418",
+    gravity: 0,
+    cols: 230,
+    rows: 145,
+    tile: 36,
+    seed: 66066,
+    walks: 14,
+    carve: 3,
+    pods: 11,
+    loot: 20,
+    fuel: 14,
+  },
+  {
+    id: "thorn",
+    name: "Thorn",
+    x: 370000,
+    y: 440000,
+    radius: 255,
+    color: "#c6e04a",
+    atmosphere: "rgba(190, 220, 60, 0.15)",
+    fill: "#1c2410",
+    stroke: "#c6e04a",
+    deep: "#0c1406",
+    gravity: 0,
+    cols: 215,
+    rows: 165,
+    tile: 36,
+    seed: 77077,
+    walks: 24,
+    carve: 1,
+    pods: 16,
+    loot: 18,
+    fuel: 9,
+  },
+  {
+    id: "helix",
+    name: "Helix",
+    x: 550000,
+    y: 410000,
+    radius: 310,
+    color: "#ff5ec8",
+    atmosphere: "rgba(255, 80, 200, 0.16)",
+    fill: "#241018",
+    stroke: "#ff5ec8",
+    deep: "#14080e",
+    gravity: 0,
+    cols: 250,
+    rows: 175,
+    tile: 36,
+    seed: 88088,
+    walks: 26,
+    carve: 2,
+    pods: 20,
+    loot: 22,
+    fuel: 10,
   },
 ];
 
@@ -210,6 +329,20 @@ export function generateCavern(planet: PlanetDef): Cavern {
   }
   for (let r = 0; r < 22; r++) carve(shaft, r, 3);
 
+  const bossC = clamp(Math.floor(cols * 0.7), 18, cols - 18);
+  const bossR = rows - 22;
+  carve(bossC, bossR, 9);
+  carve(bossC - 6, bossR, 5);
+  carve(bossC + 6, bossR + 2, 5);
+  let cc = shaft;
+  let rr = 18;
+  while (rr < bossR || Math.abs(cc - bossC) > 1) {
+    carve(cc, rr, 3);
+    if (rr < bossR) rr += 1;
+    if (cc < bossC) cc += 1;
+    else if (cc > bossC) cc -= 1;
+  }
+
   const spawnX = (shaft + 0.5) * tile;
   const spawnY = 7 * tile;
   const cavern: Cavern = {
@@ -221,6 +354,8 @@ export function generateCavern(planet: PlanetDef): Cavern {
     solid,
     spawnX,
     spawnY,
+    bossX: (bossC + 0.5) * tile,
+    bossY: (bossR + 0.5) * tile,
     fill: planet.fill,
     stroke: planet.stroke,
     deep: planet.deep,
@@ -319,6 +454,7 @@ export function drawCavern(
   camY: number,
   viewW: number,
   viewH: number,
+  zoom = 1,
 ): void {
   ctx.fillStyle = cav.deep;
   ctx.fillRect(camX, camY, viewW, viewH);
@@ -328,8 +464,13 @@ export function drawCavern(
   const r0 = Math.max(0, Math.floor(camY / t) - 1);
   const r1 = Math.min(cav.rows - 1, Math.floor((camY + viewH) / t) + 1);
   ctx.fillStyle = cav.fill;
-  ctx.strokeStyle = cav.stroke;
-  ctx.lineWidth = 1;
+  // Edge strokes vanish when a tile is a couple of screen pixels; skip the path.
+  const strokeEdges = t * zoom >= 2.4;
+  if (strokeEdges) {
+    ctx.strokeStyle = cav.stroke;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+  }
   for (let r = r0; r <= r1; r++) {
     let c = c0;
     while (c <= c1) {
@@ -343,14 +484,13 @@ export function drawCavern(
       const y = r * t;
       const w = (c - start) * t;
       ctx.fillRect(x, y, w, t);
-      if (r > 0 && cav.solid[(r - 1) * cav.cols + start] === 0) {
-        ctx.beginPath();
+      if (strokeEdges && r > 0 && cav.solid[(r - 1) * cav.cols + start] === 0) {
         ctx.moveTo(x, y + 0.5);
         ctx.lineTo(x + w, y + 0.5);
-        ctx.stroke();
       }
     }
   }
+  if (strokeEdges) ctx.stroke();
 }
 
 export function emptySpots(cav: Cavern, count: number, seed: number, minRow = 18): { x: number; y: number }[] {

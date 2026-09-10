@@ -1,24 +1,46 @@
 # RE-ENTRY
 
-A neon arcade shooter with an 8-bit dive. Open space is a huge map. Fly to a planet, press **E**, and watch the craft re-enter atmosphere in chunky pixels before you drop into a Sub-Terrania-style cavern.
+A neon arcade shooter with an 8-bit dive. Open space is a huge empty map (640k × 480k, 400× the old 32k × 24k area) with **no gravity** — caverns are thrust-only too. Cinder is unlocked. Fly in, press **E**, survive the cavern, and beat the planet boss for the key to the next world. Dock **Hab-7** in open space to spend banked credits on gear.
 
 ## Play
 
 - **Turn** with `A` / `D`. The nose is thrust-forward — `W` flies that way, `S` reverses
 - **Shoot** with `Space`, a click, or Fire (touch)
-- **Re-enter / launch** with `E` when the prompt appears, or click a nearby planet. Re-entry plays an 8-bit cinematic
-- **Scroll** to zoom in and out a long way
-- **Pause** with `Esc`
+- **Shields** with `Shift` — drains a separate energy pool (refill from `E` pickups)
+- **Re-enter / launch / dock** with `E` when the prompt appears, or click a nearby unlocked planet / Hab-7
+- **Rescue beam** with `R` if you run out of fuel in a cavern (or it auto-fires on a would-be death)
+- **Mute** with `M`
+- **Scroll** to zoom. Radar (bottom left) marks planets, Hab-7 (diamond + H), and the living boss
+- **Pause** with `Esc`. Esc also closes the station shop
 
 ### Space
 
-The camera follows you across a 32k × 24k field. Rocks can drop credits, guns, shields, and a shooting pet. Four planets sit far apart: **Cinder**, **Rime**, **Mycel**, **Vesper**.
+The camera follows you across a 640k × 480k field (20× the old 32k axes, 400× area). Linear 200× (6.4M × 4.8M) jitters in canvas float32 when zoomed in, so 640k is the stable cap. Space is zero-g with no proximity wells. Rocks spawn near the ship (capped) and can drop credits, guns, energy cells, and a shooting pet. Eight planets sit far apart: **Cinder**, **Rime**, **Mycel**, **Vesper**, then **Ashen**, **Brine**, **Thorn**, **Helix**. **Hab-7** floats northeast of Cinder — fly near it and press **E** to dock. You start near Cinder but outside its re-entry halo — follow the nav arrow. Later planets stay locked until you hold the previous world's key.
+
+To check empty space: Begin, confirm there is no “Re-enter Cinder” prompt, zoom out (planets are sparse dots), and fly away from Cinder. No gravity pull. The HUD arrow still points at Cinder. Travel to Rime is a long empty-space run. Hab-7 is the cyan diamond on the radar (marked **H**).
 
 ### Planets
 
-Each planet is its own cavern world. Gravity pulls you down. Thrust burns fuel. Find fuel cells, loot, and hostiles in the tunnels. Fly back up the entry shaft and press `E` to return to space.
+Each planet is its own cavern. No down-pull — thrust-only flight, like Sub-Terrania without gravity. Thrust burns a small fuel tank. Ore stays in the hold until you launch (full bank) or call the rescue beam (salvage rate, 50% to start, plus a credit fee).
 
-The radar (bottom left) shows the whole current world.
+### Bosses & keys
+
+| Planet | Boss | Drop |
+| --- | --- | --- |
+| Cinder | Ember Warden | Cinder Key → unlocks Rime, larger fuel tank |
+| Rime | Frost Crown | Rime Key → unlocks Mycel, salvage 75% |
+| Mycel | Sporeheart | Mycel Key → unlocks Vesper, salvage 100% |
+| Vesper | Night Veil | Vesper Key → unlocks Ashen |
+| Ashen | Ash Colossus | Ashen Key → unlocks Brine |
+| Brine | Tide Serpent | Brine Key → unlocks Thorn |
+| Thorn | Bramble King | Thorn Key → unlocks Helix |
+| Helix | Coil Warden | Final clear |
+
+### Hab-7 shop
+
+Dock in open space (not a cavern). Spend banked credits — and dive cargo if you somehow still hold any — on Twin (35), Spread (45), Rapid (40), a wingman (50, cap 2), fuel tank +15 (30), energy cell +15 (28), salvage 75%/100% (55/80), energy refill (12), and a cheap fuel top-off (8). Broke rows show how many credits are missing. Esc or Leave undocks. Purchases write into `reentry-save`.
+
+Keys, tank size, salvage rate, credits, shop loadout (guns / pets), and high score persist in `localStorage` (`reentry-save`, migrated from old `drift-*` keys).
 
 ## Run locally
 
@@ -35,3 +57,5 @@ npm run preview
 ```
 
 builds a static site into `dist/`.
+
+See [PLAYTEST.md](PLAYTEST.md) for a verification checklist.

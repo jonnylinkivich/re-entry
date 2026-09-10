@@ -5,12 +5,12 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#000108" />
-    <meta name="description" content="RE-ENTRY — huge space, four planet caverns, and an 8-bit dive." />
+    <meta name="description" content="RE-ENTRY — huge empty space, eight planet caverns, Hab-7 station, and an 8-bit dive." />
     <title>RE-ENTRY</title>
   </head>
   <body>
     <div id="app">
-      <canvas id="game" aria-label="RE-ENTRY game field"></canvas>
+      <canvas id="game" tabindex="-1" aria-label="RE-ENTRY game field"></canvas>
       <div id="vignette" aria-hidden="true"></div>
 
       <header id="hud" hidden>
@@ -27,6 +27,10 @@
             <span>Credits</span>
             <strong id="credits">0</strong>
           </div>
+          <div class="stat" id="cargo-wrap" hidden>
+            <span>Cargo</span>
+            <strong id="cargo">0</strong>
+          </div>
         </div>
         <div class="hud-cluster hud-cluster-end">
           <div id="loadout" class="loadout" hidden></div>
@@ -39,10 +43,17 @@
       </header>
 
       <div id="combo" hidden>x2</div>
+      <div id="objective" hidden></div>
       <div id="prompt" hidden></div>
-      <div id="fuel-wrap" hidden>
-        <span>Fuel</span>
-        <div class="fuel-track"><i id="fuel-bar"></i></div>
+      <div id="meters">
+        <div id="fuel-wrap" hidden>
+          <span>Fuel</span>
+          <div class="meter-track"><i id="fuel-bar"></i></div>
+        </div>
+        <div id="energy-wrap" hidden>
+          <span>Energy</span>
+          <div class="meter-track energy"><i id="energy-bar"></i></div>
+        </div>
       </div>
 
       <div id="overlay">
@@ -50,18 +61,36 @@
           <p class="kicker">8-bit arcade</p>
           <h1>RE-ENTRY</h1>
           <p class="lede">
-            Open space is huge. Fly to Cinder, Rime, Mycel, or Vesper and press
-            E — the craft hits atmosphere in an 8-bit re-entry, then you fly the
-            caverns. Launch back out the shaft when you want the sky again.
+            Cinder is open. Eight worlds sit far apart across empty space — no
+            gravity, in space or in the caverns. Dock <strong>Hab-7</strong> to spend
+            banked credits on guns, tanks, and salvage. Dive the caverns, haul
+            ore, and beat the planet boss for the key to the next world. Fuel is
+            scarce. Hold Shift to raise shields — they drain energy. Run dry and
+            the rescue beam brings you home with half the cargo.
           </p>
           <ul class="controls">
             <li><kbd>A</kbd> <kbd>D</kbd> turn · <kbd>W</kbd> thrust forward · <kbd>S</kbd> reverse</li>
             <li><kbd>Space</kbd> / click — shoot. Click a nearby planet to dive.</li>
-            <li><kbd>E</kbd> — re-enter when the prompt lights up, or launch from a shaft</li>
-            <li>Scroll to zoom in and out. Radar shows the rest of the map.</li>
-            <li><kbd>Esc</kbd> — pause</li>
+            <li><kbd>Shift</kbd> — shields (energy) · <kbd>E</kbd> re-enter / launch / dock</li>
+            <li><kbd>R</kbd> — rescue beam when stranded · <kbd>M</kbd> mute</li>
+            <li>Scroll to zoom. Radar marks planets and the Hab-7 diamond.</li>
+            <li>On a phone: L / R turn, Thrust / Rev, Fire</li>
+            <li><kbd>Esc</kbd> — pause / close shop</li>
           </ul>
           <button type="button" id="play" class="btn">Begin re-entry</button>
+        </section>
+
+        <section class="panel panel-shop" data-screen="shop" hidden>
+          <p class="kicker">Orbital exchange</p>
+          <h1>HAB-7</h1>
+          <p class="lede">
+            Banked credits buy loadout. Gear stays in the save. Esc or Leave
+            undocks.
+          </p>
+          <p class="scoreline"><span>Credits</span><strong id="shop-credits">0</strong></p>
+          <p id="shop-hint" class="shop-hint" hidden></p>
+          <ul id="shop-list" class="shop-list"></ul>
+          <button type="button" id="shop-leave" class="btn">Leave dock</button>
         </section>
 
         <section class="panel" data-screen="pause" hidden>
@@ -87,7 +116,13 @@
         </section>
       </div>
 
-      <button type="button" id="fire" class="fire-btn" hidden aria-label="Fire">Fire</button>
+      <div id="pads" hidden>
+        <button type="button" class="pad-btn" data-key="KeyA" tabindex="-1" aria-label="Turn left">L</button>
+        <button type="button" class="pad-btn pad-thrust" data-key="KeyW" tabindex="-1" aria-label="Thrust">Thrust</button>
+        <button type="button" class="pad-btn" data-key="KeyD" tabindex="-1" aria-label="Turn right">R</button>
+        <button type="button" class="pad-btn pad-rev" data-key="KeyS" tabindex="-1" aria-label="Reverse">Rev</button>
+      </div>
+      <button type="button" id="fire" class="fire-btn" hidden tabindex="-1" aria-label="Fire">Fire</button>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
