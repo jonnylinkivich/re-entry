@@ -793,7 +793,6 @@ export class Game {
     for (const floater of this.floaters) {
       if (this.inView(floater.x, floater.y, 40)) this.drawFloater(ctx, floater);
     }
-    this.drawWorldNav(ctx);
 
     ctx.restore();
     this.drawBanner(ctx);
@@ -1619,10 +1618,9 @@ export class Game {
         if (!Number.isFinite(ship.vx)) ship.vx = 0;
         if (!Number.isFinite(ship.vy)) ship.vy = 0;
         const impact = Math.hypot(preVx, preVy);
-        const gravityFloor = preVy > 80 && preVy * preVy >= preVx * preVx;
         const fresh = !this.wallGrind;
         this.wallGrind = true;
-        if (fresh && impact > WALL_SLAM && !gravityFloor && ship.invuln <= 0) this.crashHit();
+        if (fresh && impact > WALL_SLAM && ship.invuln <= 0) this.crashHit();
       } else {
         this.wallGrind = false;
       }
@@ -2482,49 +2480,6 @@ export class Game {
     ctx.textAlign = "center";
     ctx.fillText(f.text, f.x, f.y);
     ctx.globalAlpha = 1;
-  }
-
-  private drawWorldNav(ctx: CanvasRenderingContext2D): void {
-    if (this.mode === "menu") return;
-    let tx: number;
-    let ty: number;
-    let color: string;
-    if (this.zone === "cavern" && this.boss?.alive) {
-      tx = this.boss.x;
-      ty = this.boss.y;
-      color = this.boss.def.color;
-    } else if (this.zone === "space") {
-      const poi = this.closestPoi();
-      tx = poi.x;
-      ty = poi.y;
-      color = poi.color;
-    } else {
-      return;
-    }
-    const x0 = this.ship.x;
-    const y0 = this.ship.y;
-    const dx = tx - x0;
-    const dy = ty - y0;
-    const len = Math.hypot(dx, dy);
-    if (len < 8) return;
-    // Never stroke a megapixel dashed line — only a viewport-length ray.
-    const reach = Math.hypot(this.w / this.zoom, this.h / this.zoom) * 0.7;
-    const t = Math.min(1, reach / len);
-    const x1 = x0 + dx * t;
-    const y1 = y0 + dy * t;
-    ctx.save();
-    ctx.strokeStyle = color;
-    ctx.globalAlpha = 0.55;
-    ctx.lineWidth = Math.max(1.5, 3 / this.zoom);
-    const dash = Math.max(8, 12 / this.zoom);
-    const gap = Math.max(6, 10 / this.zoom);
-    ctx.setLineDash([dash, gap]);
-    ctx.beginPath();
-    ctx.moveTo(x0, y0);
-    ctx.lineTo(x1, y1);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.restore();
   }
 
   private drawBanner(ctx: CanvasRenderingContext2D): void {

@@ -395,7 +395,7 @@ export class PlanetBoss {
     }
   }
 
-  private stepAsh(dt: number, shipX: number, shipY: number): void {
+  private stepAsh(_dt: number, shipX: number, shipY: number): void {
     if (this.fireCd <= 0) {
       this.fireCd = 1.2;
       this.radial(6, 200, 2.2, this.def.color);
@@ -410,7 +410,6 @@ export class PlanetBoss {
       this.vx += Math.cos(ang) * 240;
       this.vy += Math.sin(ang) * 240;
     }
-    this.vy += 22 * dt;
   }
 
   private stepTide(_dt: number, shipX: number, shipY: number): void {
