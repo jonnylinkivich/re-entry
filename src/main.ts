@@ -447,13 +447,13 @@ const padPointers = new Map<number, { x: number; y: number }>();
 
 function codesFromPadPoint(clientX: number, clientY: number): Set<string> {
   const cluster = padsEl.getBoundingClientRect();
-  const nx = clamp((clientX - cluster.left) / Math.max(cluster.width, 1), 0, 1);
-  const ny = clamp((clientY - cluster.top) / Math.max(cluster.height, 1), 0, 1);
+  const nx = (clientX - cluster.left) / Math.max(cluster.width, 1);
+  const ny = (clientY - cluster.top) / Math.max(cluster.height, 1);
   const codes = new Set<string>();
-  if (nx < 0.36) codes.add("KeyA");
-  if (nx > 0.64) codes.add("KeyD");
-  if (ny < 0.44) codes.add("KeyW");
-  if (ny > 0.56) codes.add("KeyS");
+  if (nx < 0.42) codes.add("KeyA");
+  if (nx > 0.58) codes.add("KeyD");
+  if (ny < 0.48) codes.add("KeyW");
+  if (ny > 0.52) codes.add("KeyS");
   return codes;
 }
 
@@ -469,12 +469,17 @@ function syncPadCluster(): void {
   }
 }
 
+function setPadPoint(pointerId: number, clientX: number, clientY: number): void {
+  padPointers.set(pointerId, { x: clientX, y: clientY });
+  syncPadCluster();
+}
+
 function onPadPointerDown(event: PointerEvent): void {
-  if (event.button !== 0 && event.pointerType === "mouse") return;
+  if (event.pointerType === "mouse" && event.button !== 0) return;
   event.preventDefault();
   event.stopPropagation();
   unlockAudio();
-  padPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  setPadPoint(event.pointerId, event.clientX, event.clientY);
   try {
     padsEl.setPointerCapture(event.pointerId);
   } catch {
@@ -482,19 +487,38 @@ function onPadPointerDown(event: PointerEvent): void {
   }
   if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
   surface.focus({ preventScroll: true });
-  syncPadCluster();
 }
 
 function onPadPointerMove(event: PointerEvent): void {
-  if (!padPointers.has(event.pointerId)) return;
-  padPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-  syncPadCluster();
+  if (padPointers.size === 0) return;
+  if (padPointers.has(event.pointerId)) {
+    setPadPoint(event.pointerId, event.clientX, event.clientY);
+    return;
+  }
+  // Remote desktops sometimes change pointerId between down and move.
+  if (event.pointerType === "mouse" && (event.buttons & 1) !== 0) {
+    const id = [...padPointers.keys()][0];
+    if (id != null) setPadPoint(id, event.clientX, event.clientY);
+  }
 }
 
 function onPadPointerUp(event: PointerEvent): void {
-  if (!padPointers.has(event.pointerId)) return;
-  padPointers.delete(event.pointerId);
+  if (padPointers.size === 0) return;
+  if (padPointers.has(event.pointerId)) {
+    padPointers.delete(event.pointerId);
+  } else if (event.pointerType === "mouse") {
+    padPointers.clear();
+  } else {
+    return;
+  }
   syncPadCluster();
+}
+
+function onPadMouseMove(event: MouseEvent): void {
+  if (padPointers.size === 0 || (event.buttons & 1) === 0) return;
+  const id = [...padPointers.keys()][0];
+  if (id == null) return;
+  setPadPoint(id, event.clientX, event.clientY);
 }
 
 padsEl.addEventListener("pointerdown", onPadPointerDown);
@@ -504,6 +528,7 @@ padsEl.addEventListener("pointercancel", onPadPointerUp);
 window.addEventListener("pointermove", onPadPointerMove);
 window.addEventListener("pointerup", onPadPointerUp, true);
 window.addEventListener("pointercancel", onPadPointerUp, true);
+window.addEventListener("mousemove", onPadMouseMove);
 
 function releaseHolds(): void {
   thrustingPointer = false;
