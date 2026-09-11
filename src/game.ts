@@ -395,6 +395,8 @@ export class Game {
   private runUnlock = false;
   private wallGrind = false;
   private transitLock = 0;
+  /** Consume E/Enter until release so a hold can still fire once we reach a halo. */
+  private interactLatch = false;
   private startAt = -1e9;
 
   constructor() {
@@ -435,6 +437,7 @@ export class Game {
     }
     if (code === "KeyE") {
       if (this.mode === "cine") this.skipCine();
+      else if (this.mode === "menu" || this.mode === "over") this.start();
       else if (this.mode === "play") this.tryTransit();
     }
     if (code === "KeyR" && this.mode === "play") this.tryRescue();
@@ -522,6 +525,7 @@ export class Game {
     this.pendingPlanet = null;
     this.wallGrind = false;
     this.transitLock = 0;
+    this.interactLatch = false;
     this.score = 0;
     this.lives = MAX_LIVES;
     this.wave = 1;
@@ -585,7 +589,18 @@ export class Game {
     this.shopHint = "";
     this.keys.delete("KeyE");
     this.keys.delete("Enter");
+    this.interactLatch = true;
     this.markHud();
+  }
+
+  /** Prompt tap / click — same as E when a re-entry, dock, or launch halo is live. */
+  interact(): void {
+    if (this.mode !== "play") return;
+    if (this.zone === "cavern" && this.fuel <= 0) {
+      this.tryRescue();
+      return;
+    }
+    this.tryTransit();
   }
 
   closeShop(): void {
@@ -733,6 +748,7 @@ export class Game {
     this.stepBoss(t);
     this.collide();
     this.updatePrompt();
+    this.updateInteract();
     if (this.zone === "space") this.checkWave();
 
     if (this.hudDirty) {
@@ -1117,6 +1133,14 @@ export class Game {
         self.ship.angle = -Math.PI / 2;
         self.snapCam();
       },
+      reentryWarpReentry: () => {
+        const home = PLANETS[0];
+        self.ship.x = home.x + home.radius + 80;
+        self.ship.y = home.y;
+        self.ship.vx = 0;
+        self.ship.vy = 0;
+        self.snapCam();
+      },
     });
   }
 
@@ -1197,7 +1221,30 @@ export class Game {
     return planetUnlocked(id, this.ownedKeys());
   }
 
+  private transitReady(): boolean {
+    if (this.zone === "space") {
+      if (this.nearStation()) return true;
+      if (this.transitLock > 0) return false;
+      return this.nearestPlanet(REENTRY_RANGE) != null;
+    }
+    return Boolean(this.cavern && inExitShaft(this.cavern, this.ship.x, this.ship.y));
+  }
+
+  /** Fire E/Enter when the halo appears, even if the key was already held. */
+  private updateInteract(): void {
+    if (this.mode !== "play") return;
+    if (!this.held("KeyE", "Enter")) {
+      this.interactLatch = false;
+      return;
+    }
+    if (this.interactLatch || !this.transitReady()) return;
+    this.interactLatch = true;
+    this.tryTransit();
+  }
+
   private tryTransit(): void {
+    if (this.mode !== "play") return;
+    if (this.transitReady()) this.interactLatch = true;
     if (this.zone === "space") {
       if (this.nearStation()) {
         this.openShop();
@@ -1218,7 +1265,7 @@ export class Game {
   }
 
   private beginReentry(planet: PlanetDef): void {
-    if (this.transitLock > 0) return;
+    if (this.mode !== "play" || this.transitLock > 0) return;
     if (!this.isUnlocked(planet.id)) {
       const need = neededKey(planet.id);
       this.announce(need ? lockPrompt(planet.name, need) : `${planet.name.toUpperCase()} LOCKED`);

@@ -286,26 +286,43 @@ function playingNow(): boolean {
   return game.mode === "play" || game.mode === "cine";
 }
 
+/** Remote / IME keydowns sometimes omit `code`. Map `key` so E/WASD still reach the game. */
+function eventCode(event: KeyboardEvent): string {
+  if (event.code && event.code !== "Unidentified") return event.code;
+  const key = event.key;
+  if (key === " ") return "Space";
+  if (key === "Enter" || key === "Escape") return key;
+  if (key === "Shift") return "ShiftLeft";
+  if (key.length === 1) {
+    const ch = key.toLowerCase();
+    if (ch >= "a" && ch <= "z") return `Key${ch.toUpperCase()}`;
+  }
+  return event.code;
+}
+
 window.addEventListener(
   "keydown",
   (event) => {
+    const code = eventCode(event);
     const active = document.activeElement;
     const playing = playingNow();
     const flightKey =
-      event.code === "Space" ||
-      event.code === "ArrowUp" ||
-      event.code === "ArrowDown" ||
-      event.code === "ArrowLeft" ||
-      event.code === "ArrowRight" ||
-      event.code === "KeyW" ||
-      event.code === "KeyA" ||
-      event.code === "KeyS" ||
-      event.code === "KeyD" ||
-      event.code === "KeyJ" ||
-      event.code === "KeyK";
+      code === "Space" ||
+      code === "ArrowUp" ||
+      code === "ArrowDown" ||
+      code === "ArrowLeft" ||
+      code === "ArrowRight" ||
+      code === "KeyW" ||
+      code === "KeyA" ||
+      code === "KeyS" ||
+      code === "KeyD" ||
+      code === "KeyE" ||
+      code === "Enter" ||
+      code === "KeyJ" ||
+      code === "KeyK";
     const buttonArmed =
       !playing &&
-      (event.code === "Enter" || event.code === "Space") &&
+      (code === "Enter" || code === "Space") &&
       active instanceof HTMLButtonElement &&
       !active.disabled;
     if (buttonArmed) {
@@ -313,18 +330,18 @@ window.addEventListener(
       // and the following click would start() again.
       return;
     }
-    if (event.code === "Space" || event.code === "ArrowUp" || event.code === "ArrowDown") event.preventDefault();
-    if (event.repeat && (event.code === "Enter" || event.code === "Escape" || event.code === "KeyE")) return;
+    if (code === "Space" || code === "ArrowUp" || code === "ArrowDown") event.preventDefault();
+    if (event.repeat && (code === "Enter" || code === "Escape" || code === "KeyE")) return;
     if (playing && active instanceof HTMLButtonElement) {
       active.blur();
-      if (event.code === "Space" || event.code === "Enter") event.preventDefault();
+      if (code === "Space" || code === "Enter") event.preventDefault();
     }
     if (playing && flightKey) {
       event.preventDefault();
       if (active instanceof HTMLElement && active !== surface) active.blur();
     }
     unlockAudio();
-    game.key(event.code, true);
+    game.key(code, true);
   },
   true,
 );
@@ -332,10 +349,19 @@ window.addEventListener(
 window.addEventListener(
   "keyup",
   (event) => {
-    game.key(event.code, false);
+    game.key(eventCode(event), false);
   },
   true,
 );
+
+promptEl.addEventListener("pointerdown", (event) => {
+  if (event.button !== 0) return;
+  event.preventDefault();
+  event.stopPropagation();
+  unlockAudio();
+  game.interact();
+  grabPlayFocusSoon();
+});
 
 let thrustingPointer = false;
 

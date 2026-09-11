@@ -132,11 +132,13 @@ body {
 }
 
 #prompt {
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: pointer;
   position: absolute;
   left: 50%;
   bottom: max(148px, calc(env(safe-area-inset-bottom) + 132px));
   transform: translateX(-50%);
+  z-index: 4;
   padding: 14px 22px;
   border: 1px solid rgba(255, 107, 61, 0.7);
   border-radius: 999px;
