@@ -1141,6 +1141,13 @@ export class Game {
         self.ship.vy = 0;
         self.snapCam();
       },
+      reentryDebug: () => ({
+        angle: self.ship.angle,
+        thrusting: self.ship.thrusting,
+        reversing: self.ship.reversing,
+        pads: [...self.pads],
+        keys: [...self.keys],
+      }),
     });
   }
 

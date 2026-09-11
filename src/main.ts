@@ -412,32 +412,28 @@ function bindHold(
   onDown: () => void,
   onUp: () => void,
 ): void {
-  let held = false;
+  const ids = new Set<number>();
   const down = (event: PointerEvent) => {
     event.preventDefault();
     event.stopPropagation();
     unlockAudio();
-    held = true;
+    if (ids.size === 0) onDown();
+    ids.add(event.pointerId);
     try {
       el.setPointerCapture(event.pointerId);
     } catch {
       /* capture is optional */
     }
     el.blur();
-    onDown();
   };
-  const up = (event: Event) => {
-    if (!held) return;
-    if (event instanceof PointerEvent && event.type === "lostpointercapture" && event.buttons !== 0) {
-      return;
-    }
-    held = false;
-    onUp();
+  const up = (event: PointerEvent) => {
+    if (!ids.has(event.pointerId)) return;
+    ids.delete(event.pointerId);
+    if (ids.size === 0) onUp();
   };
   el.addEventListener("pointerdown", down);
   el.addEventListener("pointerup", up);
   el.addEventListener("pointercancel", up);
-  el.addEventListener("lostpointercapture", up);
 }
 
 bindHold(
@@ -446,21 +442,73 @@ bindHold(
   () => game.setFire(false),
 );
 
-for (const pad of padsEl.querySelectorAll<HTMLButtonElement>("[data-key]")) {
-  const code = pad.dataset.key;
-  if (!code) continue;
-  bindHold(
-    pad,
-    () => game.pad(code, true),
-    () => game.pad(code, false),
-  );
+/** One pointer on the cluster can thrust and turn (mouse cannot hold L+Thrust as two buttons). */
+const padPointers = new Map<number, { x: number; y: number }>();
+
+function codesFromPadPoint(clientX: number, clientY: number): Set<string> {
+  const cluster = padsEl.getBoundingClientRect();
+  const nx = clamp((clientX - cluster.left) / Math.max(cluster.width, 1), 0, 1);
+  const ny = clamp((clientY - cluster.top) / Math.max(cluster.height, 1), 0, 1);
+  const codes = new Set<string>();
+  if (nx < 0.36) codes.add("KeyA");
+  if (nx > 0.64) codes.add("KeyD");
+  if (ny < 0.44) codes.add("KeyW");
+  if (ny > 0.56) codes.add("KeyS");
+  return codes;
 }
+
+function syncPadCluster(): void {
+  const held = new Set<string>();
+  for (const point of padPointers.values()) {
+    for (const code of codesFromPadPoint(point.x, point.y)) held.add(code);
+  }
+  for (const code of PAD_CODES) game.pad(code, held.has(code));
+  for (const btn of padsEl.querySelectorAll<HTMLButtonElement>("[data-key]")) {
+    const code = btn.dataset.key;
+    btn.classList.toggle("is-held", Boolean(code && held.has(code)));
+  }
+}
+
+function onPadPointerDown(event: PointerEvent): void {
+  if (event.button !== 0 && event.pointerType === "mouse") return;
+  event.preventDefault();
+  event.stopPropagation();
+  unlockAudio();
+  padPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  try {
+    padsEl.setPointerCapture(event.pointerId);
+  } catch {
+    /* capture is optional */
+  }
+  if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+  surface.focus({ preventScroll: true });
+  syncPadCluster();
+}
+
+function onPadPointerMove(event: PointerEvent): void {
+  if (!padPointers.has(event.pointerId)) return;
+  padPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  syncPadCluster();
+}
+
+function onPadPointerUp(event: PointerEvent): void {
+  if (!padPointers.has(event.pointerId)) return;
+  padPointers.delete(event.pointerId);
+  syncPadCluster();
+}
+
+padsEl.addEventListener("pointerdown", onPadPointerDown);
+padsEl.addEventListener("pointermove", onPadPointerMove);
+padsEl.addEventListener("pointerup", onPadPointerUp);
+padsEl.addEventListener("pointercancel", onPadPointerUp);
 
 function releaseHolds(): void {
   thrustingPointer = false;
   game.clearPointer();
   game.setFire(false);
+  padPointers.clear();
   game.clearPads();
+  for (const btn of padsEl.querySelectorAll(".pad-btn")) btn.classList.remove("is-held");
   for (const code of PAD_CODES) game.key(code, false);
 }
 
