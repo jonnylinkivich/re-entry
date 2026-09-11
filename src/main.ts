@@ -501,6 +501,9 @@ padsEl.addEventListener("pointerdown", onPadPointerDown);
 padsEl.addEventListener("pointermove", onPadPointerMove);
 padsEl.addEventListener("pointerup", onPadPointerUp);
 padsEl.addEventListener("pointercancel", onPadPointerUp);
+window.addEventListener("pointermove", onPadPointerMove);
+window.addEventListener("pointerup", onPadPointerUp, true);
+window.addEventListener("pointercancel", onPadPointerUp, true);
 
 function releaseHolds(): void {
   thrustingPointer = false;
