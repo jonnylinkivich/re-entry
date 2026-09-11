@@ -56,7 +56,11 @@ function showScreen(mode: Mode | "error"): void {
   screens.forEach((node) => {
     node.hidden = node.dataset.screen !== mode;
   });
-  overlay.hidden = mode === "play" || mode === "cine";
+  const hideOverlay = mode === "play" || mode === "cine";
+  overlay.hidden = hideOverlay;
+  // Hidden Begin/Retry can still eat Space if they keep focus. Inert drops them
+  // out of the focus/activation tree so Space fires the gun instead.
+  overlay.inert = hideOverlay;
   hud.hidden = mode === "menu" || mode === "error" || mode === "cine";
   // Always offer the flight keypad in play. Coarse pointers need it; desktop
   // was hiding it behind (pointer: fine), which looked like the pads never landed.
@@ -234,14 +238,24 @@ function grabPlayFocus(): void {
   shopLeaveBtn.blur();
   fireBtn.blur();
   for (const pad of padsEl.querySelectorAll<HTMLButtonElement>(".pad-btn")) pad.blur();
+  const active = document.activeElement;
+  if (active instanceof HTMLElement && active !== surface && active !== document.body) {
+    active.blur();
+  }
   window.focus();
   surface.focus({ preventScroll: true });
 }
 
 function grabPlayFocusSoon(): void {
   grabPlayFocus();
-  // Keyboard-activated buttons can steal focus back after the click handler.
-  requestAnimationFrame(grabPlayFocus);
+  // Keyboard-activated Begin/Retry can steal focus back after click. Grab again
+  // on the next frames and a short timeout so WASD/Space work without a canvas click.
+  requestAnimationFrame(() => {
+    grabPlayFocus();
+    requestAnimationFrame(grabPlayFocus);
+  });
+  window.setTimeout(grabPlayFocus, 0);
+  window.setTimeout(grabPlayFocus, 50);
 }
 
 function beginRun(): void {
@@ -277,6 +291,18 @@ window.addEventListener(
   (event) => {
     const active = document.activeElement;
     const playing = playingNow();
+    const flightKey =
+      event.code === "Space" ||
+      event.code === "ArrowUp" ||
+      event.code === "ArrowDown" ||
+      event.code === "ArrowLeft" ||
+      event.code === "ArrowRight" ||
+      event.code === "KeyW" ||
+      event.code === "KeyA" ||
+      event.code === "KeyS" ||
+      event.code === "KeyD" ||
+      event.code === "KeyJ" ||
+      event.code === "KeyK";
     const buttonArmed =
       !playing &&
       (event.code === "Enter" || event.code === "Space") &&
@@ -292,6 +318,10 @@ window.addEventListener(
     if (playing && active instanceof HTMLButtonElement) {
       active.blur();
       if (event.code === "Space" || event.code === "Enter") event.preventDefault();
+    }
+    if (playing && flightKey) {
+      event.preventDefault();
+      if (active instanceof HTMLElement && active !== surface) active.blur();
     }
     unlockAudio();
     game.key(event.code, true);

@@ -91,7 +91,7 @@ Hold `W`/`A`/`D` — tapping thrust does nothing useful. Canvas focus is grabbed
    Approach Cinder, `E` (or click). 8-bit re-entry cine, then cavern. Fuel bar appears. Caverns are thrust-only (no down-pull). Hold `Shift`: shield ring, energy drains. Collect **O** ore (cargo HUD ticks up, credits do not bank yet) and **F** fuel / **E** energy.
 
 4. **Boss**  
-   Follow the dashed nav line / radar pip / edge marker to **Ember Warden** (lower-right chamber). Shoot until it dies. Banner grants **Cinder Key**; tank chip grows. Re-visiting Cinder must not respawn the boss.
+   Follow the radar pip / edge marker to **Ember Warden** (lower-right chamber). There is no dashed world-nav line. Shoot until it dies. Banner grants **Cinder Key**; tank chip grows. Re-visiting Cinder must not respawn the boss.
 
 5. **Launch vs rescue**  
    - Shaft + `E`: banks **100%** of dive cargo into credits.  
@@ -139,7 +139,7 @@ Recorded against the running Vite server on `:47331` (`?playtest=1`) while the p
 ### Cavern
 
 - Caverns are thrust-only (no gravity). Fuel is the killer: tanks drain fast, **STRANDED — R RESCUE BEAM (15 CR)** is a strong moment.
-- Ember Warden chamber, dashed lock, radar pip, loot (ore / fuel / weapons), Twin/Shield chips, combo `x3` all showed up in captures.
+- Ember Warden chamber, radar pip, loot (ore / fuel / weapons), Twin/Shield chips, combo `x3` all showed up in captures. The dashed world-nav stroke is gone.
 - Climb/launch is possible from the entry shaft (`LAUNCH TO SPACE — E (BANK CARGO)`). Hero includes an **OPEN SPACE** return after a shaft `E`. Full “fly the whole shaft on a dry tank” is still easy to fail — rescue is the intended out.
 - `populateCavern` now stores a `diveHolds` snapshot so loot is not restacked every visit (fixed vs original P0).
 
@@ -243,7 +243,7 @@ Also on disk (raw / parallel captures, not the punchy edit):
 ### Hero beat list (`ad_hero_720p.mp4` / `recording_demo.mp4`)
 
 1. **Space** — Cinder, rocks, hull-breach (dogfight is small-scale). Re-entry is the HTML pill only.
-2. **Planet approach** — dashed nav, HTML re-entry pill.
+2. **Planet approach** — edge arrow + HTML re-entry pill. No dashed nav/gravity line.
 3. **E cinematic** — chunky pixels, planet name, flames (~3.7s, not skipped immediately).
 4. **Cavern combat / fuel scramble** — Ember Warden lock, loot, Twin/Shield, fuel bar.
 5. **Launch to space** — shaft / `OPEN SPACE` return to Cinder.

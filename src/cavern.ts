@@ -40,8 +40,6 @@ export type PlanetDef = {
   fill: string;
   stroke: string;
   deep: string;
-  /** Always 0. Caverns and space are thrust-only — no down-pull or proximity well. */
-  gravity: number;
   cols: number;
   rows: number;
   tile: number;
@@ -96,7 +94,6 @@ export const PLANETS: PlanetDef[] = [
     fill: "#3a1610",
     stroke: "#e06030",
     deep: "#140806",
-    gravity: 0,
     cols: 200,
     rows: 150,
     tile: 36,
@@ -118,7 +115,6 @@ export const PLANETS: PlanetDef[] = [
     fill: "#102436",
     stroke: "#7ec8e8",
     deep: "#071018",
-    gravity: 0,
     cols: 220,
     rows: 140,
     tile: 36,
@@ -140,7 +136,6 @@ export const PLANETS: PlanetDef[] = [
     fill: "#102414",
     stroke: "#62c56e",
     deep: "#07140c",
-    gravity: 0,
     cols: 210,
     rows: 160,
     tile: 36,
@@ -162,7 +157,6 @@ export const PLANETS: PlanetDef[] = [
     fill: "#1a1028",
     stroke: "#b07cff",
     deep: "#0c0814",
-    gravity: 0,
     cols: 240,
     rows: 170,
     tile: 36,
@@ -184,7 +178,6 @@ export const PLANETS: PlanetDef[] = [
     fill: "#2a120c",
     stroke: "#e07038",
     deep: "#120806",
-    gravity: 0,
     cols: 200,
     rows: 155,
     tile: 36,
@@ -206,7 +199,6 @@ export const PLANETS: PlanetDef[] = [
     fill: "#0c2428",
     stroke: "#3ec8c8",
     deep: "#061418",
-    gravity: 0,
     cols: 230,
     rows: 145,
     tile: 36,
@@ -228,7 +220,6 @@ export const PLANETS: PlanetDef[] = [
     fill: "#1c2410",
     stroke: "#c6e04a",
     deep: "#0c1406",
-    gravity: 0,
     cols: 215,
     rows: 165,
     tile: 36,
@@ -250,7 +241,6 @@ export const PLANETS: PlanetDef[] = [
     fill: "#241018",
     stroke: "#ff5ec8",
     deep: "#14080e",
-    gravity: 0,
     cols: 250,
     rows: 175,
     tile: 36,
