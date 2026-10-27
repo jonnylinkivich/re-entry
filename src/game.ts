@@ -4,6 +4,7 @@ import {
   sfxBossHit,
   sfxBuy,
   sfxFold,
+  sfxBack,
   sfxHit,
   sfxKey,
   sfxOver,
@@ -13,6 +14,7 @@ import {
   sfxShield,
   sfxShoot,
   sfxThrust,
+  sfxThud,
   sfxWave,
   audioSnapshot,
   setMusicBed,
@@ -167,6 +169,16 @@ type Spark = {
   color: string;
 };
 
+/** Screen-space neon ring. Death stays where the hull broke; back follows the ship. */
+type HullFlash = {
+  sx: number;
+  sy: number;
+  life: number;
+  max: number;
+  delay: number;
+  kind: "death" | "back";
+};
+
 type LootKind = "credits" | "ore" | "energy" | "rapid" | "twin" | "spread" | "pet" | "fuel";
 
 type DiveHold = {
@@ -287,6 +299,9 @@ const HOLE_EXIT_SPEED = 1600;
 /** Capture edge flash, then the arrival pop. Visual only — fold routing is unchanged. */
 const FOLD_FLASH = 0.28;
 const FOLD_POP = 0.5;
+/** Hull-breach shatter, then the return pop. Screen strokes, not a new particle system. */
+const HULL_FLASH = 0.44;
+const HULL_POP = 0.36;
 /**
  * Salvage landmarks on the 6.4M field. The ring is the cruise-scale read
  * (a thin stroke, not a gradient). The core is the fly-through.
@@ -461,6 +476,7 @@ export class Game {
   private bullets: Bullet[] = [];
   private rocks: Rock[] = [];
   private sparks: Spark[] = [];
+  private hullFlashes: HullFlash[] = [];
   private pickups: Pickup[] = [];
   private pets: Pet[] = [];
   private floaters: Floater[] = [];
@@ -691,6 +707,7 @@ export class Game {
     this.gear = { rapid: false, twin: false, spread: false };
     this.bullets = [];
     this.sparks = [];
+    this.hullFlashes = [];
     this.pickups = [];
     this.pets = [];
     this.floaters = [];
@@ -893,6 +910,7 @@ export class Game {
     if (this.mode === "pause" || this.mode === "over" || this.mode === "shop") {
       this.driftDecor(t * 0.35);
       this.stepSparks(t);
+      this.stepHullFlashes(t);
       this.followCam(t);
       return;
     }
@@ -900,6 +918,7 @@ export class Game {
     if (this.mode === "menu") {
       this.driftDecor(t);
       this.stepSparks(t);
+      this.stepHullFlashes(t);
       this.followCam(t);
       return;
     }
@@ -910,6 +929,7 @@ export class Game {
     this.stepRocks(t);
     this.stepPickups(t);
     this.stepSparks(t);
+    this.stepHullFlashes(t);
     this.stepFloaters(t);
     this.followCam(t);
     this.comboLife = Math.max(0, this.comboLife - t);
@@ -986,6 +1006,7 @@ export class Game {
     ctx.restore();
     this.drawHoleTelegraph(ctx);
     this.drawFoldFx(ctx);
+    this.drawHullFlashes(ctx);
     this.drawSpaceLabels(ctx);
     this.drawBanner(ctx);
     this.drawNavMarker(ctx);
@@ -1530,6 +1551,7 @@ export class Game {
     this.cavern = null;
     this.rocks = [];
     this.sparks = [];
+    this.hullFlashes = [];
     this.pickups = [];
     this.pets = [];
     const home = PLANETS[0];
@@ -1879,6 +1901,7 @@ export class Game {
     this.pickups = [];
     this.bullets = [];
     this.sparks = [];
+    this.hullFlashes = [];
     this.floaters = [];
     this.diveCargo = 0;
     this.fuel = this.tankMax();
@@ -1925,6 +1948,7 @@ export class Game {
       this.pickups = hold.pickups;
       this.bullets = [];
       this.sparks = [];
+      this.hullFlashes = [];
       this.floaters = [];
     }
     this.spaceHold = null;
@@ -2891,10 +2915,13 @@ export class Game {
       this.beginRescue();
       return;
     }
+    const deathAt = this.screenOf(ship.x, ship.y);
     this.burst(ship.x, ship.y, 18, "#7ee7ff", 150);
     this.burst(ship.x, ship.y, 10, "#ff6b8a", 110);
+    this.pushHullFlash("death", deathAt.sx, deathAt.sy);
     this.shake = 12;
     sfxHit();
+    sfxThud();
     this.lives -= 1;
     this.combo = 1;
     this.comboLife = 0;
@@ -2916,7 +2943,48 @@ export class Game {
       this.ship = this.freshShip(ship.x, ship.y);
     }
     this.settleShip();
+    const backAt = this.screenOf(this.ship.x, this.ship.y);
+    this.pushHullFlash("back", backAt.sx, backAt.sy);
+    sfxBack();
     this.announce("HULL BREACH");
+  }
+
+  /** CSS pixels. Captured before the camera snaps so the shatter stays on the breach. */
+  private screenOf(x: number, y: number): { sx: number; sy: number } {
+    return {
+      sx: (x - this.camX) * this.zoom,
+      sy: (y - this.camY) * this.zoom,
+    };
+  }
+
+  private pushHullFlash(kind: "death" | "back", sx: number, sy: number): void {
+    if (this.hullFlashes.length > 6) this.hullFlashes.shift();
+    const max = kind === "death" ? HULL_FLASH : HULL_POP;
+    this.hullFlashes.push({
+      sx,
+      sy,
+      life: max,
+      max,
+      delay: kind === "back" ? 0.06 : 0,
+      kind,
+    });
+  }
+
+  private stepHullFlashes(dt: number): void {
+    const list = this.hullFlashes;
+    let w = 0;
+    for (let i = 0; i < list.length; i++) {
+      const flash = list[i];
+      if (!flash) continue;
+      if (flash.delay > 0) {
+        flash.delay = Math.max(0, flash.delay - dt);
+        list[w++] = flash;
+        continue;
+      }
+      flash.life -= dt;
+      if (flash.life > 0) list[w++] = flash;
+    }
+    list.length = w;
   }
 
   private checkWave(): void {
@@ -3624,6 +3692,75 @@ export class Game {
       ctx.stroke();
     }
     ctx.restore();
+  }
+
+  /** Orange-cyan shatter on a breach, then a tight pop on the live hull. Strokes only. */
+  private drawHullFlashes(ctx: CanvasRenderingContext2D): void {
+    if (this.hullFlashes.length === 0) return;
+    ctx.save();
+    ctx.lineCap = "round";
+    for (const flash of this.hullFlashes) {
+      if (flash.delay > 0) continue;
+      const t = 1 - clamp(flash.life / flash.max, 0, 1);
+      const live = flash.kind === "back" ? this.screenOf(this.ship.x, this.ship.y) : flash;
+      if (flash.kind === "death") {
+        const fade = (1 - t) * (1 - t * 0.2);
+        ctx.globalAlpha = clamp(fade, 0, 1);
+        this.strokeHullArcs(ctx, live.sx, live.sy, 26 + t * 96, "#ff8a3d", 2.6, t * 0.9, 0.36 + t * 0.4, 8);
+        ctx.globalAlpha = clamp(fade * 0.95, 0, 1);
+        this.strokeHullArcs(ctx, live.sx, live.sy, 14 + t * 60, "#7ee7ff", 1.8, -t * 1.2, 0.26 + t * 0.36, 6);
+        ctx.globalAlpha = clamp(fade * 0.75, 0, 1);
+        ctx.strokeStyle = "#ff8a3d";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        const ticks = 9;
+        for (let i = 0; i < ticks; i++) {
+          const a = t * 1.15 + (i / ticks) * Math.PI * 2;
+          const inner = 18 + t * 48;
+          const outer = inner + 8 + t * 18;
+          ctx.moveTo(live.sx + Math.cos(a) * inner, live.sy + Math.sin(a) * inner);
+          ctx.lineTo(live.sx + Math.cos(a) * outer, live.sy + Math.sin(a) * outer);
+        }
+        ctx.stroke();
+      } else {
+        const pop = 1 - (1 - t) * (1 - t);
+        const fade = clamp(1 - t * t, 0, 1);
+        ctx.globalAlpha = fade;
+        this.strokeHullArcs(ctx, live.sx, live.sy, 12 + pop * 54, "#7ee7ff", 2.8, pop * 0.25, 0, 1);
+        ctx.globalAlpha = fade * 0.92;
+        this.strokeHullArcs(ctx, live.sx, live.sy, 7 + pop * 28, "#ff8a3d", 1.7, -pop * 0.2, 0, 1);
+      }
+    }
+    ctx.restore();
+  }
+
+  private strokeHullArcs(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    radius: number,
+    color: string,
+    width: number,
+    spin: number,
+    gap: number,
+    segments: number,
+  ): void {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    if (segments <= 1 || gap <= 0.02) {
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.stroke();
+      return;
+    }
+    const sweep = (Math.PI * 2) / segments;
+    const open = sweep * clamp(gap, 0, 0.82);
+    for (let i = 0; i < segments; i++) {
+      const a0 = spin + i * sweep + open * 0.5;
+      ctx.beginPath();
+      ctx.arc(x, y, radius, a0, a0 + Math.max(0.08, sweep - open));
+      ctx.stroke();
+    }
   }
 
   private drawPauseChart(ctx: CanvasRenderingContext2D): void {
