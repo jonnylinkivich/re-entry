@@ -92,6 +92,68 @@ export const STATION: StationDef = {
 
 export const DOCK_RANGE = 420;
 
+export type HoleDef = {
+  id: number;
+  x: number;
+  y: number;
+};
+
+const HOLE_ANCHORS: ReadonlyArray<readonly [number, number]> = [
+  [0.18, 0.22],
+  [0.42, 0.16],
+  [0.64, 0.3],
+  [0.84, 0.18],
+  [0.2, 0.76],
+  [0.46, 0.7],
+  [0.66, 0.84],
+  [0.86, 0.68],
+];
+
+function buildHoles(): HoleDef[] {
+  const rand = mulberry(4242);
+  const holes: HoleDef[] = [];
+  const planetClear = 140_000;
+  const stationClear = 80_000;
+  const holeClear = 700_000;
+  for (const [ax, ay] of HOLE_ANCHORS) {
+    let x = (ax + (rand() - 0.5) * 0.06) * SPACE_W;
+    let y = (ay + (rand() - 0.5) * 0.06) * SPACE_H;
+    for (let n = 0; n < 24; n++) {
+      let bad = false;
+      for (const planet of PLANETS) {
+        const d = Math.hypot(x - planet.x, y - planet.y);
+        if (d < planetClear) {
+          const push = d > 1 ? planetClear / d : planetClear;
+          x = planet.x + (x - planet.x) * push;
+          y = planet.y + (y - planet.y) * push;
+          bad = true;
+        }
+      }
+      const sd = Math.hypot(x - STATION.x, y - STATION.y);
+      if (sd < stationClear) {
+        const push = sd > 1 ? stationClear / sd : stationClear;
+        x = STATION.x + (x - STATION.x) * push;
+        y = STATION.y + (y - STATION.y) * push;
+        bad = true;
+      }
+      for (const hole of holes) {
+        const d = Math.hypot(x - hole.x, y - hole.y);
+        if (d < holeClear) {
+          const push = d > 1 ? holeClear / d : holeClear;
+          x = hole.x + (x - hole.x) * push;
+          y = hole.y + (y - hole.y) * push;
+          bad = true;
+        }
+      }
+      x = clamp(x, SPACE_W * 0.08, SPACE_W * 0.92);
+      y = clamp(y, SPACE_H * 0.08, SPACE_H * 0.92);
+      if (!bad) break;
+    }
+    holes.push({ id: holes.length, x, y });
+  }
+  return holes;
+}
+
 export const PLANETS: PlanetDef[] = [
   {
     id: "cinder",
@@ -262,6 +324,13 @@ export const PLANETS: PlanetDef[] = [
     fuel: 10,
   },
 ];
+
+/**
+ * Eight seeded void folds. Anchors sit in the open field; a short nudge
+ * keeps each one clear of planet solids, Hab-7, and the other folds.
+ * Separation stays on the order of a long hop so they read as landmarks.
+ */
+export const HOLES: HoleDef[] = buildHoles();
 
 export function generateCavern(planet: PlanetDef): Cavern {
   const { cols, rows, tile } = planet;

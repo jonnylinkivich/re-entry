@@ -398,6 +398,10 @@ let thrustingPointer = false;
 surface.addEventListener("pointerdown", (event) => {
   if (event.button !== 0) return;
   unlockAudio();
+  if (game.mode === "cine") {
+    game.pulseFire();
+    return;
+  }
   grabPlayFocusSoon();
   surface.setPointerCapture(event.pointerId);
   thrustingPointer = true;

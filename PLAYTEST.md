@@ -34,6 +34,31 @@ Hab-7 still sells Engines Mk 1–5 at 45 CR each (`engines` 0..5). The ladder is
 
 ---
 
+## Planet splash, chart, void folds
+
+Same branch as the large map. Hab-7 and the key chain are unchanged: a locked world still refuses the dive, and the shop is still the cyan diamond.
+
+### Splash
+
+Pressing `E` on an open planet plays a branded card first, then the existing 3.6s dive. The card uses the void background (`#000108`), cyan `RE-ENTRY`, and the planet’s accent from `PLANETS` (Cinder is `#ff6b3d`). It ends on its own in **1.25s**. `E`, `Space`, `Esc`, or a click/tap skips one stage: splash → dive, then dive → cavern. It does not wait on input.
+
+### Chart
+
+Open space is a 40×30 bitset (cells of 160000²). The ship’s cell lights when you cross it, and entering a planet records that id. Both live on `reentry-save` (`visited`, `visitedPlanets`) and survive reload and a new run. The minimap paints visited cells in faint cyan and leaves the rest dark. Planets, Hab-7’s diamond, the nav line, and void rings stay drawn on top, so a locked world is still findable. `Esc` in space swaps the corner radar for a larger **CHARTED** panel with the same fog.
+
+### Void folds
+
+Eight seeded blackholes (`mulberry` 4242), kept about 700000 apart and clear of planet centers and Hab-7. The core is a small black disc with magenta and cyan arcs. Radar marks are hollow magenta rings, distinct from planet discs and the Hab-7 diamond. Flying into the well (pull ~7200, capture ~1600, swept so a fast frame cannot skip the core) plays a short pull, then **VOID FOLD** drops you on the rim of the farthest other hole, outside planet solids and Hab-7, with nearby rocks cleared. A full-cruise graze of the outer rim can still slip past; aiming at the core, or coasting in the well, folds. A ~3.2s lock and a small outward shove stop an instant recapture. They stay landmarks on the 6.4M map.
+
+### Verify
+
+1. `npm run build`, then preview `http://localhost:47331/?playtest=1&unlock=1`.
+2. Splash: fly into Cinder’s halo, press `E`. Card reads **RE-ENTRY** / **CINDER** in Cinder’s orange, scanlines, hint `E SPACE CLICK`. Wait — the dive starts by itself in about a second. Repeat on Rime (blue `#9ad8ff`). From the card, `E` or a canvas click jumps to the dive; a second `E` or click enters the cavern. Objective and the key chain still match the world you entered.
+3. Chart: after Begin, the spawn cell on the minimap is lit and the rest of the field is dark. Fly a straight burn for several seconds — a trail of cells lights behind you. Planets and the **H** diamond stay visible on dark cells. `Esc`: the **CHARTED** panel shows the same trail. Enter Cinder, then reload the page and Begin again. `reentryChart()` still reports `cells` > 1 and `planets` includes `"cinder"`. A fresh profile with no `visited` key starts dark except the new spawn cell.
+4. Void folds: `reentryHoles()` returns 8 points inside the map. `reentryFold(0)` parks you in a well (intro zoom, nose toward the core). Wait or tap thrust — speed bends in, sparks pull magenta/cyan, then the banner **VOID FOLD** and you are beside a different hole, not inside a planet and not on Hab-7. The minimap shows a hollow magenta ring at each hole, including on unvisited cells. Flying the empty field away from those rings still coasts with no general gravity.
+
+---
+
 ## Load / Restart (production playtest, 2026-09-10)
 
 Nick: load felt slow and the game “restarts.” Timed against a **production** `vite preview` on `:47331` (not Vite HMR). `npm run build` **green** (`tsc && vite build`, wall ~1.1–1.3s).
@@ -118,13 +143,13 @@ Hold `W`/`A`/`D` — tapping thrust does nothing useful. Canvas focus is grabbed
 ## Loop checks
 
 1. **Menu → space**  
-   Begin re-entry. You spawn **near Cinder but outside** the re-entry halo — no `Re-enter Cinder — E` on frame 1. HUD shows energy bar, objective **Defeat Ember Warden**. Nav arrow + distance still point at Cinder. Zoom out: planets are sparse dots on a 6.4M × 4.8M map. Radar shows eight planet discs plus Hab-7’s cyan diamond (**H**). Fly away — **no gravity** in open space (no proximity well).
+   Begin re-entry. You spawn **near Cinder but outside** the re-entry halo — no `Re-enter Cinder — E` on frame 1. HUD shows energy bar, objective **Defeat Ember Warden**. Nav arrow + distance still point at Cinder. Zoom out: planets are sparse dots on a 6.4M × 4.8M map. Radar shows eight planet discs, hollow magenta void rings, and Hab-7’s cyan diamond (**H**). Away from a void fold the ship coasts — open space has no general gravity. The spawn cell on the minimap is lit; the rest of the chart is dark.
 
 2. **Gate prompt**  
    Long travel to Rime (empty space). Without a key, up close: `RIME LOCKED — need Cinder Key`. `E` must not start a dive. Same style for later worlds (`ASHEN LOCKED — need Vesper Key`, etc.).
 
 3. **Cinder dive**  
-   Approach Cinder, `E` (or click). 8-bit re-entry cine, then cavern. Fuel bar appears. Caverns are thrust-only (no down-pull). Hold `Shift`: shield ring, energy drains. Collect **O** ore (cargo HUD ticks up, credits do not bank yet) and **F** fuel / **E** energy.
+   Approach Cinder, `E` (or click). Branded splash (~1.25s, Cinder accent, skip with `E` / `Space` / click), then the 8-bit re-entry cine, then the cavern. Fuel bar appears. Caverns are thrust-only (no down-pull). Hold `Shift`: shield ring, energy drains. Collect **O** ore (cargo HUD ticks up, credits do not bank yet) and **F** fuel / **E** energy.
 
 4. **Boss**  
    Follow the radar pip / edge marker to **Ember Warden** (lower-right chamber). There is no dashed world-nav line. Shoot until it dies. Banner grants **Cinder Key**; tank chip grows. Re-visiting Cinder must not respawn the boss.
@@ -138,7 +163,7 @@ Hold `W`/`A`/`D` — tapping thrust does nothing useful. Canvas focus is grabbed
    After Cinder Key, Rime opens. Repeat: Frost Crown → Rime Key + 75% salvage. Sporeheart → Mycel Key + 100% salvage. Night Veil → Vesper Key → **Ashen**. Then Ash Colossus → Brine, Tide Serpent → Thorn, Bramble King → Helix, Coil Warden is the finale. Original four-world loop still verifies the same way.
 
 7. **Persist**  
-   Refresh. Credits, keys, tank, salvage, shop guns/pets, high score remain (`reentry-save`).
+   Refresh. Credits, keys, tank, salvage, shop guns/pets, high score, charted cells, and entered planets remain (`reentry-save`, including `visited` and `visitedPlanets`).
 
 8b. **Hab-7 dock**  
    Find the cyan diamond on the minimap (northeast of Cinder). Fly near Hab-7 → HTML prompt `Dock station — E`. `E` or click opens the neon shop overlay. Prices show; broke rows name the missing credits. With `?playtest=1` (80 CR) buy Twin (35) or a tank (30). Esc / Leave returns to space; WASD / Space still work. Station stays in space when you dive.
@@ -150,7 +175,7 @@ Hold `W`/`A`/`D` — tapping thrust does nothing useful. Canvas focus is grabbed
    Map is **6400000 × 4800000**. Eight planets: Cinder → Rime → Mycel → Vesper → Ashen → Brine → Thorn → Helix (each needs the previous key). See **Large map** above for the 5-minute cruise and the jitter check.  
    - Begin: no re-entry prompt.  
    - Zoom out (`ZOOM_MIN` 0.0008): planet pips + lots of void. Radar shows all eight plus Hab-7’s diamond.  
-   - Fly away from Cinder: ship coasts with **no gravity**. HUD arrow still names Cinder + distance.  
+   - Fly away from Cinder, clear of the magenta rings: ship coasts with **no general gravity**. HUD arrow still names Cinder + distance. A void fold is a local well only (see **Planet splash, chart, void folds**).  
    - Reach another world only after a long empty-space run. Re-entry prompt appears only in a local halo.  
    - Zoom in far from the origin: no camera wobble.
 

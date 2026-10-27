@@ -18,11 +18,13 @@ import { BOSS_BY_PLANET, PlanetBoss } from "./boss.ts";
 import {
   DOCK_RANGE,
   MAP_SCALE,
+  HOLES,
   PLANETS,
   SPACE_H,
   SPACE_W,
   SPAWN_CLEARANCE,
   STATION,
+  type HoleDef,
   type Cavern,
   type PlanetDef,
   circleHitsSolid,
@@ -33,18 +35,25 @@ import {
   inExitShaft,
   moveAgainst,
 } from "./cavern.ts";
-import { ReentryCine, RescueCine } from "./cinematic.ts";
+import { PlanetSplash, ReentryCine, RescueCine } from "./cinematic.ts";
 import {
   ALL_PLANET_KEYS,
+  CHART_CELLS,
+  CHART_COLS,
+  CHART_ROWS,
   ENERGY_DRAIN,
   ENERGY_HIT,
   ENGINES_MAX,
   FUEL_IDLE,
   FUEL_THRUST,
   RESCUE_FEE,
+  chartFromString,
+  chartIndex,
+  chartToString,
   gateObjective,
   loadMeta,
   lockPrompt,
+  markChart,
   neededKey,
   planetUnlocked,
   playtestFlags,
@@ -254,6 +263,13 @@ const SPACE_INTRO_ZOOM = 0.34 / MAP_SCALE;
 const REENTRY_RANGE = 520;
 /** Away-spawns must stay this far from the ship (world clamp used to drop rocks on you). */
 const ROCK_CLEAR_R = 1800;
+/** Void-fold well. Visual core stays a landmark; the pull is the thing you fly into. */
+const HOLE_VISUAL_R = 64;
+const HOLE_PULL_R = 7200;
+const HOLE_CAPTURE_R = 1600;
+const HOLE_EXIT = 2800;
+const HOLE_LOCK = 3.2;
+const HOLE_EXIT_SPEED = 1600;
 /** Lethal only for a *new* wall slam — not grinding the same surface. */
 const WALL_SLAM = 420;
 const RESCUE_FUEL = 24;
@@ -297,6 +313,25 @@ function spaceMaxSpeed(level: number): number {
 /** Space thrust. Same ratio as 360 u/s² at 880 u/s on the old chart. */
 function spaceThrust(level: number): number {
   return THRUST * (spaceMaxSpeed(level) / 880);
+}
+
+function segmentNear(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  cx: number,
+  cy: number,
+  radius: number,
+): boolean {
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const len2 = dx * dx + dy * dy;
+  let t = 0;
+  if (len2 > 1e-6) t = clamp(((cx - x0) * dx + (cy - y0) * dy) / len2, 0, 1);
+  const px = x0 + dx * t - cx;
+  const py = y0 + dy * t - cy;
+  return px * px + py * py <= radius * radius;
 }
 
 function dist2(ax: number, ay: number, bx: number, by: number): number {
@@ -447,8 +482,8 @@ export class Game {
   private bosses = new Map<string, PlanetBoss | "cleared">();
   private boss: PlanetBoss | null = null;
   private spaceHold: SpaceHold | null = null;
-  private cine: ReentryCine | RescueCine | null = null;
-  private cineKind: "reentry" | "rescue" | null = null;
+  private cine: ReentryCine | RescueCine | PlanetSplash | null = null;
+  private cineKind: "splash" | "reentry" | "rescue" | null = null;
   private reentrySpaceGrace = 0;
   private pendingPlanet: PlanetDef | null = null;
   private meta: MetaState;
@@ -458,10 +493,13 @@ export class Game {
   private transitLock = 0;
   /** Consume E/Enter until release so a hold can still fire once we reach a halo. */
   private interactLatch = false;
+  private holeLock = 0;
+  private chart = chartFromString("");
   private startAt = -1e9;
 
   constructor() {
     this.meta = loadMeta();
+    this.chart = chartFromString(this.meta.visited);
     setMuted(this.meta.muted);
     this.credits = this.meta.credits;
     this.high = this.meta.high;
@@ -506,7 +544,10 @@ export class Game {
     if (code === "KeyM") this.toggleMute();
     if (code === "Space") {
       if (this.mode === "cine") {
-        if (this.cineKind === "reentry" && this.reentrySpaceGrace > 0) {
+        if (
+          (this.cineKind === "reentry" || this.cineKind === "splash") &&
+          this.reentrySpaceGrace > 0
+        ) {
           this.keys.delete("Space");
           return;
         }
@@ -564,6 +605,10 @@ export class Game {
   }
 
   pulseFire(): void {
+    if (this.mode === "cine") {
+      this.skipCine();
+      return;
+    }
     this.queuedFire = true;
     if (this.mode !== "play" || this.zone !== "space" || !this.pointer) return;
     const stationReach = STATION.radius + 56;
@@ -636,6 +681,8 @@ export class Game {
     const home = PLANETS[0];
     this.ship = this.freshShip(home.x + home.radius + SPAWN_CLEARANCE, home.y);
     this.ship.angle = Math.PI;
+    this.holeLock = 0;
+    this.noteVisit();
     this.applyMetaLoadout();
     this.rocks = [];
     this.seed = (Math.random() * 1e9) | 0;
@@ -862,6 +909,7 @@ export class Game {
     } else {
       this.drawPlanets(ctx);
       this.drawStation(ctx);
+      this.drawHoles(ctx);
     }
 
     for (const spark of this.sparks) {
@@ -891,7 +939,8 @@ export class Game {
     this.drawSpaceLabels(ctx);
     this.drawBanner(ctx);
     this.drawNavMarker(ctx);
-    if (this.mode !== "menu") this.drawMinimap(ctx);
+    if (this.mode === "pause" && !this.cavern) this.drawPauseChart(ctx);
+    else if (this.mode !== "menu") this.drawMinimap(ctx);
     if (this.showFps) this.drawFps(ctx);
   }
 
@@ -1118,6 +1167,121 @@ export class Game {
   private clearHazardsNearShip(radius: number): void {
     const r2 = radius * radius;
     this.rocks = this.rocks.filter((rock) => dist2(rock.x, rock.y, this.ship.x, this.ship.y) > r2);
+  }
+
+  private noteVisit(): void {
+    this.noteChartAt(this.ship.x, this.ship.y);
+  }
+
+  private noteChartAt(x: number, y: number): void {
+    if (!markChart(this.chart, chartIndex(x, y))) return;
+    this.meta.visited = chartToString(this.chart);
+    saveMeta(this.meta);
+  }
+
+  private notePlanet(id: string): void {
+    if (!ALL_PLANET_KEYS.includes(id as (typeof ALL_PLANET_KEYS)[number])) return;
+    if (this.meta.visitedPlanets.includes(id)) return;
+    this.meta.visitedPlanets = [...this.meta.visitedPlanets, id];
+    saveMeta(this.meta);
+  }
+
+  private nearestHole(range: number): HoleDef | null {
+    let best: HoleDef | null = null;
+    let bestD = range;
+    for (const hole of HOLES) {
+      const d = Math.hypot(this.ship.x - hole.x, this.ship.y - hole.y);
+      if (d < bestD) {
+        bestD = d;
+        best = hole;
+      }
+    }
+    return best;
+  }
+
+  /** Bend velocity into the nearest well. The cruise clamp already ran, so a core pull can exceed it. */
+  private pullHole(dt: number): void {
+    this.holeLock = Math.max(0, this.holeLock - dt);
+    if (this.holeLock > 0) return;
+    const hole = this.nearestHole(HOLE_PULL_R);
+    if (!hole) return;
+    const dx = hole.x - this.ship.x;
+    const dy = hole.y - this.ship.y;
+    const d = Math.hypot(dx, dy) || 1;
+    const t = clamp(1 - d / HOLE_PULL_R, 0, 1);
+    const accel = 8000 + t * t * 42000;
+    this.ship.vx += (dx / d) * accel * dt;
+    this.ship.vy += (dy / d) * accel * dt;
+    if (t > 0.15 && Math.random() < 0.65) {
+      this.burst(this.ship.x, this.ship.y, 1, Math.random() < 0.5 ? "#ff5ec8" : "#7ee7ff", 90);
+    }
+  }
+
+  private captureHole(x0: number, y0: number): void {
+    if (this.holeLock > 0) return;
+    for (const hole of HOLES) {
+      if (segmentNear(x0, y0, this.ship.x, this.ship.y, hole.x, hole.y, HOLE_CAPTURE_R)) {
+        this.foldHole(hole);
+        return;
+      }
+    }
+  }
+
+  private foldHole(from: HoleDef): void {
+    let dest: HoleDef | null = null;
+    let best = -1;
+    for (const hole of HOLES) {
+      if (hole.id === from.id) continue;
+      const d = dist2(hole.x, hole.y, from.x, from.y);
+      if (d > best) {
+        best = d;
+        dest = hole;
+      }
+    }
+    if (!dest) return;
+    const spin = Math.atan2(this.ship.y - from.y, this.ship.x - from.x) + Math.PI / 2;
+    const spot = this.clearOfWorld(dest.x + Math.cos(spin) * HOLE_EXIT, dest.y + Math.sin(spin) * HOLE_EXIT);
+    this.ship.x = spot.x;
+    this.ship.y = spot.y;
+    const ox = spot.x - dest.x;
+    const oy = spot.y - dest.y;
+    const od = Math.hypot(ox, oy) || 1;
+    this.ship.vx = (ox / od) * HOLE_EXIT_SPEED;
+    this.ship.vy = (oy / od) * HOLE_EXIT_SPEED;
+    this.holeLock = HOLE_LOCK;
+    this.clearHazardsNearShip(ROCK_CLEAR_R);
+    this.snapCam();
+    this.burst(spot.x, spot.y, 16, "#ff5ec8", 240);
+    this.burst(spot.x, spot.y, 10, "#7ee7ff", 180);
+    this.shake = 11;
+    sfxReentry();
+    this.announce("VOID FOLD");
+    this.noteVisit();
+  }
+
+  /** Keep a fold exit off planet solids, Hab-7, and the map edge. */
+  private clearOfWorld(x: number, y: number): { x: number; y: number } {
+    const pads = [
+      { x: STATION.x, y: STATION.y, r: STATION.radius + 4000 },
+      ...PLANETS.map((planet) => ({ x: planet.x, y: planet.y, r: planet.radius + 4000 })),
+    ];
+    let px = x;
+    let py = y;
+    for (let pass = 0; pass < 4; pass++) {
+      for (const pad of pads) {
+        const dx = px - pad.x;
+        const dy = py - pad.y;
+        const d = Math.hypot(dx, dy);
+        if (d < pad.r) {
+          const push = d > 1 ? pad.r / d : pad.r;
+          px = pad.x + dx * push;
+          py = pad.y + dy * push;
+        }
+      }
+      px = clamp(px, 800, SPACE_W - 800);
+      py = clamp(py, 800, SPACE_H - 800);
+    }
+    return { x: px, y: py };
   }
 
   private settleShip(): void {
@@ -1349,6 +1513,32 @@ export class Game {
           y: self.ship.y,
         };
       },
+      reentryChart: () => {
+        let cells = 0;
+        for (let i = 0; i < CHART_CELLS; i++) {
+          if (self.chart[i >> 3]! & (1 << (i & 7))) cells += 1;
+        }
+        return { cells, planets: self.meta.visitedPlanets.slice() };
+      },
+      reentryHoles: () => HOLES.map((hole) => ({ id: hole.id, x: hole.x, y: hole.y })),
+      reentryFold: (id = 0) => {
+        const hole = HOLES[id] ?? HOLES[0];
+        if (!hole) return;
+        self.zone = "space";
+        self.cavern = null;
+        self.planet = null;
+        self.boss = null;
+        self.mode = "play";
+        self.ship.x = hole.x + HOLE_PULL_R * 0.42;
+        self.ship.y = hole.y;
+        self.ship.vx = -1800;
+        self.ship.vy = 0;
+        self.ship.angle = Math.PI;
+        self.holeLock = 0;
+        self.zoom = SPACE_INTRO_ZOOM;
+        self.zoomWanted = SPACE_INTRO_ZOOM;
+        self.snapCam();
+      },
     });
   }
 
@@ -1398,6 +1588,8 @@ export class Game {
             const need = neededKey(planet.id);
             next = need ? lockPrompt(planet.name, need) : `Re-enter ${planet.name}  —  E`;
           }
+        } else if (this.holeLock <= 0 && this.nearestHole(HOLE_PULL_R)) {
+          next = "Void fold";
         }
       }
     } else if (this.cavern && this.fuel <= 0) {
@@ -1480,8 +1672,8 @@ export class Game {
       return;
     }
     this.pendingPlanet = planet;
-    this.cineKind = "reentry";
-    this.cine = new ReentryCine(planet);
+    this.cineKind = "splash";
+    this.cine = new PlanetSplash(planet);
     this.mode = "cine";
     this.reentrySpaceGrace = REENTRY_SPACE_GRACE;
     this.keys.delete("Space");
@@ -1507,6 +1699,15 @@ export class Game {
   private finishCine(): void {
     const planet = this.pendingPlanet;
     const kind = this.cineKind;
+    if (kind === "splash" && planet) {
+      this.cineKind = "reentry";
+      this.cine = new ReentryCine(planet);
+      this.mode = "cine";
+      this.reentrySpaceGrace = REENTRY_SPACE_GRACE;
+      this.keys.delete("Space");
+      this.markHud();
+      return;
+    }
     this.cine = null;
     this.cineKind = null;
     this.reentrySpaceGrace = 0;
@@ -1566,6 +1767,8 @@ export class Game {
     }
     this.bindBoss(planet, cavern);
     this.snapCam();
+    this.notePlanet(planet.id);
+    this.noteChartAt(planet.x, planet.y);
     this.announce(planet.name.toUpperCase());
     sfxWave();
     this.markHud();
@@ -1959,6 +2162,9 @@ export class Game {
         this.wallGrind = false;
       }
     } else {
+      const x0 = ship.x;
+      const y0 = ship.y;
+      this.pullHole(dt);
       const next = bounce(
         ship.x + ship.vx * dt,
         ship.y + ship.vy * dt,
@@ -1973,6 +2179,8 @@ export class Game {
       ship.y = next.y;
       ship.vx = next.vx;
       ship.vy = next.vy;
+      this.captureHole(x0, y0);
+      this.noteVisit();
     }
 
     // Hold Space, J/K, or the Fire pad. Rapid feeder owns the short cooldown.
@@ -2994,6 +3202,131 @@ export class Game {
     ctx.fillText(label, x, labelY);
   }
 
+  private drawHoles(ctx: CanvasRenderingContext2D): void {
+    const spin = performance.now() * 0.002;
+    for (const hole of HOLES) {
+      const r = this.worldSpanForScreen(HOLE_VISUAL_R, 6);
+      if (!this.inView(hole.x, hole.y, r * 2)) continue;
+      const x = this.rx(hole.x);
+      const y = this.ry(hole.y);
+      ctx.fillStyle = "#000108";
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.lineWidth = 2 / this.zoom;
+      ctx.strokeStyle = "#ff5ec8";
+      ctx.beginPath();
+      ctx.arc(x, y, r * 1.35, spin, spin + 4.2);
+      ctx.stroke();
+      ctx.strokeStyle = "#7ee7ff";
+      ctx.beginPath();
+      ctx.arc(x, y, r * 1.7, -spin * 1.3, -spin * 1.3 + 3.4);
+      ctx.stroke();
+    }
+  }
+
+  private drawPauseChart(ctx: CanvasRenderingContext2D): void {
+    const mw = Math.min(320, Math.max(200, this.w * 0.36));
+    const mh = mw * 0.75;
+    const x = 16;
+    const y = this.h - mh - 16;
+    if (y < 64) return;
+    ctx.save();
+    ctx.fillStyle = "rgba(6, 8, 14, 0.88)";
+    ctx.strokeStyle = "rgba(126, 231, 255, 0.45)";
+    ctx.lineWidth = 1;
+    ctx.fillRect(x - 8, y - 22, mw + 16, mh + 32);
+    ctx.strokeRect(x - 8, y - 22, mw + 16, mh + 32);
+    ctx.fillStyle = "#7ee7ff";
+    ctx.font = "700 11px sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText("CHARTED", x, y - 16);
+    this.paintSpaceChart(ctx, x, y, mw, mh, true);
+    ctx.restore();
+  }
+
+  /** Visited cells lit, the rest of the panel left dark. Landmarks stay on top of the fog. */
+  private paintSpaceChart(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    mw: number,
+    mh: number,
+    labeled: boolean,
+  ): void {
+    const sx = mw / SPACE_W;
+    const sy = mh / SPACE_H;
+    const cw = mw / CHART_COLS;
+    const ch = mh / CHART_ROWS;
+    ctx.fillStyle = "rgba(126, 231, 255, 0.22)";
+    for (let i = 0; i < CHART_CELLS; i++) {
+      if ((this.chart[i >> 3]! & (1 << (i & 7))) === 0) continue;
+      const col = i % CHART_COLS;
+      const row = (i / CHART_COLS) | 0;
+      ctx.fillRect(x + col * cw, y + row * ch, cw + 0.6, ch + 0.6);
+    }
+    for (const planet of PLANETS) {
+      const seen = this.meta.visitedPlanets.includes(planet.id);
+      ctx.globalAlpha = seen ? 1 : 0.5;
+      ctx.fillStyle = planet.color;
+      ctx.beginPath();
+      ctx.arc(x + planet.x * sx, y + planet.y * sy, labeled ? 5 : 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    for (const hole of HOLES) {
+      ctx.strokeStyle = "#ff5ec8";
+      ctx.lineWidth = labeled ? 1.6 : 1.2;
+      ctx.beginPath();
+      ctx.arc(x + hole.x * sx, y + hole.y * sy, labeled ? 5 : 3.5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    const hx = x + STATION.x * sx;
+    const hy = y + STATION.y * sy;
+    ctx.save();
+    ctx.translate(hx, hy);
+    ctx.rotate(Math.PI / 4);
+    ctx.strokeStyle = "#7ee7ff";
+    ctx.fillStyle = "rgba(126, 231, 255, 0.35)";
+    ctx.lineWidth = 1.4;
+    ctx.fillRect(-4, -4, 8, 8);
+    ctx.strokeRect(-4, -4, 8, 8);
+    ctx.restore();
+    ctx.fillStyle = "#7ee7ff";
+    ctx.font = "700 8px sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillText("H", hx + 6, hy - 4);
+    if (!labeled) {
+      ctx.fillStyle = "#9aa6bf";
+      const rocks = this.rocks;
+      const n = rocks.length;
+      const step = n > 20 ? Math.ceil(n / 20) : 1;
+      for (let i = 0; i < n; i += step) {
+        const rock = rocks[i];
+        if (!rock) continue;
+        ctx.fillRect(x + rock.x * sx, y + rock.y * sy, 2, 2);
+      }
+    }
+    ctx.strokeStyle = "rgba(238, 243, 255, 0.22)";
+    ctx.lineWidth = 1;
+    const vw = Math.max(4, this.viewW() * sx);
+    const vh = Math.max(3, this.viewH() * sy);
+    ctx.strokeRect(x + this.camX * sx, y + this.camY * sy, vw, vh);
+    ctx.fillStyle = "#7ee7ff";
+    ctx.beginPath();
+    ctx.arc(x + this.ship.x * sx, y + this.ship.y * sy, labeled ? 4 : 3, 0, Math.PI * 2);
+    ctx.fill();
+    const nav = this.closestPoi();
+    ctx.strokeStyle = nav.color;
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(x + this.ship.x * sx, y + this.ship.y * sy);
+    ctx.lineTo(x + nav.x * sx, y + nav.y * sy);
+    ctx.stroke();
+  }
+
   private drawMinimap(ctx: CanvasRenderingContext2D): void {
     const mw = 168;
     const mh = 126;
@@ -3022,53 +3355,7 @@ export class Game {
         ctx.fill();
       }
     } else {
-      const sx = mw / SPACE_W;
-      const sy = mh / SPACE_H;
-      ctx.strokeStyle = "rgba(238, 243, 255, 0.22)";
-      const vw = Math.max(4, this.viewW() * sx);
-      const vh = Math.max(3, this.viewH() * sy);
-      ctx.strokeRect(x + this.camX * sx, y + this.camY * sy, vw, vh);
-      for (const planet of PLANETS) {
-        ctx.fillStyle = planet.color;
-        ctx.beginPath();
-        ctx.arc(x + planet.x * sx, y + planet.y * sy, 4, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      const hx = x + STATION.x * sx;
-      const hy = y + STATION.y * sy;
-      ctx.save();
-      ctx.translate(hx, hy);
-      ctx.rotate(Math.PI / 4);
-      ctx.strokeStyle = "#7ee7ff";
-      ctx.fillStyle = "rgba(126, 231, 255, 0.35)";
-      ctx.lineWidth = 1.4;
-      ctx.fillRect(-4, -4, 8, 8);
-      ctx.strokeRect(-4, -4, 8, 8);
-      ctx.restore();
-      ctx.fillStyle = "#7ee7ff";
-      ctx.font = "700 8px sans-serif";
-      ctx.textAlign = "left";
-      ctx.fillText("H", hx + 6, hy - 4);
-      ctx.fillStyle = "#9aa6bf";
-      const rocks = this.rocks;
-      const n = rocks.length;
-      const step = n > 20 ? Math.ceil(n / 20) : 1;
-      for (let i = 0; i < n; i += step) {
-        const rock = rocks[i];
-        if (!rock) continue;
-        ctx.fillRect(x + rock.x * sx, y + rock.y * sy, 2, 2);
-      }
-      ctx.fillStyle = "#7ee7ff";
-      ctx.beginPath();
-      ctx.arc(x + this.ship.x * sx, y + this.ship.y * sy, 3, 0, Math.PI * 2);
-      ctx.fill();
-      const nav = this.closestPoi();
-      ctx.strokeStyle = nav.color;
-      ctx.lineWidth = 2.4;
-      ctx.beginPath();
-      ctx.moveTo(x + this.ship.x * sx, y + this.ship.y * sy);
-      ctx.lineTo(x + nav.x * sx, y + nav.y * sy);
-      ctx.stroke();
+      this.paintSpaceChart(ctx, x, y, mw, mh, false);
     }
     ctx.restore();
   }
