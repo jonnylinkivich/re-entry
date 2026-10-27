@@ -179,7 +179,7 @@ Dock with `?playtest=1` (`reentryWarpStation()` then `E`). Same catalog and pric
    Find the cyan diamond on the minimap (northeast of Cinder). Fly near Hab-7 → HTML prompt `Dock station — E`. `E` or click opens the neon shop overlay. Prices show; broke rows name the missing credits. With `?playtest=1` (80 CR) buy Twin (35) or a tank (30). Esc / Leave returns to space; WASD / Space still work. Station stays in space when you dive.
 
 8. **Soft-lock**  
-   Locked planet always names the missing key. Re-entry is the HTML `#prompt` only — no canvas `{name} · E`. Combo `xN` sits under the top HUD.
+   Locked planet always names the missing key. Re-entry is the HTML `#prompt` only — no canvas `{name} · E`. Combo `xN` sits under the score cluster, clear of the objective pill and the mute chip.
 
 9. **Empty space / large map**  
    Map is **6400000 × 4800000**. Eight planets: Cinder → Rime → Mycel → Vesper → Ashen → Brine → Thorn → Helix (each needs the previous key). See **Large map** above for the 5-minute cruise and the jitter check.  
@@ -229,7 +229,7 @@ Recorded against the running Vite server on `:47331` (`?playtest=1`) while the p
 
 - Cine + cavern scanlines + boss nav line are punchy.
 - Space combat lacks scale: ship is a few pixels unless you scroll-zoom in, at which point rocks leave frame.
-- Combo is styled (`#combo` in `style.css`) but easy to miss under the objective pill.
+- Combo sits under the score cluster (`#combo` in `style.css`), clear of the centered objective pill and the mute chip. Narrow screens still park the objective at the bottom.
 - Credits bank on launch/rescue and spend at Hab-7.
 
 ### Performance
@@ -256,7 +256,7 @@ Verified against this branch after the progression-loop land. Original main-bran
 | Space dogfight doesn’t read | `game.ts` `spawnRock` `away` distance 900–3100. Spawn a closer first wave, or start zoomed in (`zoomWanted`). |
 | Cine skip from held Space | **Fixed.** `beginReentry` ignores Space for 0.4s (`reentrySpaceGrace`) and drops held Space so key-repeat cannot skip the sell. E / Esc / Enter still skip immediately. |
 | Fuel scramble vs climb fantasy | **Fixed for the first Cinder dive.** Two shaft cans (`+28`) on the carved approach until the Cinder key is owned. `START_MAX_FUEL` / `FUEL_THRUST` unchanged, so later dry tanks still rescue. |
-| Combo vs objective overlap | `style.css` `#combo` `top: 72px` sits under `#objective`. |
+| Combo vs objective overlap | **Fixed.** `#combo` is left-aligned under the score row (`top` clears the HUD and safe area), so it no longer shares the center column with `#objective`. The mute chip stays top-right. Below 640px the objective still drops to the bottom. |
 | No spend sink for credits | **Fixed.** Hab-7 shop spends banked credits on guns / pets / tanks / salvage / refills. |
 | Mute has no persistent control | `KeyM` works; no button / icon. `setMuted` is used. |
 

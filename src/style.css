@@ -798,14 +798,17 @@ kbd {
 #combo {
   pointer-events: none;
   position: absolute;
-  left: 50%;
-  top: 72px;
-  transform: translateX(-50%);
+  z-index: 2;
+  left: 22px;
+  /* Below the score row and the top-right mute chip. Center used to sit under #objective. */
+  top: calc(max(16px, env(safe-area-inset-top)) + 62px);
   font-size: 28px;
   font-weight: 700;
+  line-height: 1;
   color: var(--cyan);
   letter-spacing: 0.08em;
   text-shadow: 0 0 18px var(--glow);
+  white-space: nowrap;
 }
 
 #objective {
