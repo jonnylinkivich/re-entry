@@ -6,6 +6,34 @@ Hold `W`/`A`/`D` — tapping thrust does nothing useful. After **Begin re-entry*
 
 ---
 
+## Large map
+
+Open space is **6,400,000 × 4,800,000** (`MAP_SCALE` 10 on the old 640k × 480k chart, linear 200× the original 32k × 24k field). Planet and Hab-7 positions are that same chart times 10, so hops stay sparse instead of a cluster in a void. The minimap divides by `SPACE_W` / `SPACE_H`, so the radar still shows the whole field.
+
+The camera renders in **local space**. Each frame snaps the camera to a device pixel, subtracts that origin from world coordinates in float64, and sets a zoom-only canvas transform. The float32 matrix never stores a multi-million translation, which is what shimmered at `ZOOM_MAX` on a 6.4M map.
+
+### Cruise math
+
+```
+Mk 5 cap = SPACE_W / 300 = 21333.3 u/s
+stock    = 880 * MAP_SCALE = 8800 u/s
+```
+
+Hab-7 still sells Engines Mk 1–5 at 45 CR each (`engines` 0..5). The ladder is the 640k chart scaled by `MAP_SCALE`, so crossing times match the old field: stock ~727s (12.1 min), Mk 5 exactly **300s**. Thrust scales from 360 u/s² at 880 u/s, and space drag stays 0.32, so a held burn sits on the cap. `?playtest=1` flies at Mk 5 for that run and does **not** write `engines` into `reentry-save`. Cavern thrust and cave top speed are unchanged. Bullets inherit ship velocity so shots still leave the nose while cruising. Pets match cruise velocity in open space.
+
+`SPAWN_CLEARANCE` is **16000** (not ×10). That is about 1.8s of base thrust outside the re-entry halo, so Begin still drops you beside Cinder. Intro zoom is `0.34 / MAP_SCALE` (0.034): on a 1280px window Cinder and a boosted ship glyph share the first frame. Zoom floor is `0.008 / MAP_SCALE` (0.0008). Rock waves spawn a couple of seconds out at the current cruise, capped by the view, and never use the full world as a spawn radius.
+
+### Verify
+
+1. `npm run build`, then `npm run preview`. Open `http://localhost:47331/?playtest=1`.
+2. Begin. No re-entry prompt on frame 1. Nav still names Cinder. Radar shows eight planet discs and Hab-7’s cyan diamond (**H**). Minimap is the whole field, not a corner.
+3. Console: `reentryCruise()`. `seconds` is **300**, `engines` is **5**, `longAxis` is **6400000**.
+4. `reentryWarpEdge()` parks you on the west edge already at full cruise, nose east. Hold `W`. Crossing to the east edge is about five minutes (±20%, a short accel at the start). Let go of `W` and speed should fall off in a couple of seconds.
+5. Jitter: `reentryPlace(5800000, 2400000)`, then scroll-zoom in (toward `ZOOM_MAX` 3.6) and hold `W`. The ship stays centered and solid — no shimmer, stair-step, or whole-scene wobble. The same pass near the origin (`reentryPlace(200, 2400000)`) should look identical. Nebula color should scroll, not quantize.
+6. Without `?playtest=1`, a fresh save shows Engines Mk 1 at Hab-7 (45). Each buy persists `engines` (0–5) in `reentry-save`. Stock cruise is 8800 u/s; Mk 5 matches the 300s number.
+
+---
+
 ## Load / Restart (production playtest, 2026-09-10)
 
 Nick: load felt slow and the game “restarts.” Timed against a **production** `vite preview` on `:47331` (not Vite HMR). `npm run build` **green** (`tsc && vite build`, wall ~1.1–1.3s).
@@ -84,13 +112,13 @@ Hold `W`/`A`/`D` — tapping thrust does nothing useful. Canvas focus is grabbed
 - **Virtual stick** (`#pads`, visible in play): drag inside the cluster. A small deadzone at the center does not thrust or turn. Straight up on Thrust is a full burn with no turn; L or R alone is a full turn. A diagonal (thrust plus L or R) does both, but the vector is normalized so you do not get full thrust and full turn at once. Keyboard `A` / `D` / `W` / `S` stay digital — full axis, no deadzone — and win if held together with the stick.
 - **Prompt pulse**: fly into Cinder’s re-entry halo, Hab-7’s dock halo, or a cavern exit shaft. The first moment `#prompt` shows `Re-enter … — E`, `Dock station — E`, or `Launch to space — E`, the pill flashes brighter twice (orange, or cyan for dock), then falls back to the slow neon pulse. Locked-planet text and the stranded line do not flash. Leaving and re-entering the halo flashes again.
 - **Engines levels**: dock Hab-7. The row is **Engines Mk 1** through **Mk 5**, 45 CR each. It persists on `reentry-save` as `engines` (0–5) and shows a `Mk N` chip after the first buy. Each level raises space cruise only (cavern speed stays 390). `?playtest=1` starts with 80 CR, enough for one level. The maxed row reads Maxed.
-- **Cross-map time at max engines**: the long axis is `SPACE_W` 640000. Full engines cap speed at `640000 / 300 ≈ 2133 u/s`, so a straight burn across that axis is about **5 minutes**. Level 0 stays 880 u/s (about 12 minutes). Space thrust scales with the cap so the 0.32 drag term does not hold you under it. Do not expect the cap to follow a later map resize.
+- **Cross-map time at max engines**: the long axis is `SPACE_W` 6400000. Full engines (Mk 5) cap speed at `6400000 / 300 ≈ 21333 u/s`, so a straight burn across that axis is about **5 minutes**. Level 0 is 8800 u/s (about 12.1 minutes) — the old 880 u/s ladder, scaled with the map. Space thrust scales with the cap so the 0.32 drag term does not hold you under it.
 - **Hold Space**: holding Space (or the Fire pad) keeps firing. With Rapid feeder owned, the cooldown is 0.07s; without it, 0.17s.
 
 ## Loop checks
 
 1. **Menu → space**  
-   Begin re-entry. You spawn **near Cinder but outside** the re-entry halo — no `Re-enter Cinder — E` on frame 1. HUD shows energy bar, objective **Defeat Ember Warden**. Nav arrow + distance still point at Cinder. Zoom out: planets are sparse dots on a 640k × 480k map. Radar shows eight planet discs plus Hab-7’s cyan diamond (**H**). Fly away — **no gravity** in open space (no proximity well).
+   Begin re-entry. You spawn **near Cinder but outside** the re-entry halo — no `Re-enter Cinder — E` on frame 1. HUD shows energy bar, objective **Defeat Ember Warden**. Nav arrow + distance still point at Cinder. Zoom out: planets are sparse dots on a 6.4M × 4.8M map. Radar shows eight planet discs plus Hab-7’s cyan diamond (**H**). Fly away — **no gravity** in open space (no proximity well).
 
 2. **Gate prompt**  
    Long travel to Rime (empty space). Without a key, up close: `RIME LOCKED — need Cinder Key`. `E` must not start a dive. Same style for later worlds (`ASHEN LOCKED — need Vesper Key`, etc.).
@@ -119,11 +147,12 @@ Hold `W`/`A`/`D` — tapping thrust does nothing useful. Canvas focus is grabbed
    Locked planet always names the missing key. Re-entry is the HTML `#prompt` only — no canvas `{name} · E`. Combo `xN` sits under the top HUD.
 
 9. **Empty space / large map**  
-   Map is **640000 × 480000** (20× the old 32k axes, 400× area). Eight planets: Cinder → Rime → Mycel → Vesper → Ashen → Brine → Thorn → Helix (each needs the previous key).  
+   Map is **6400000 × 4800000**. Eight planets: Cinder → Rime → Mycel → Vesper → Ashen → Brine → Thorn → Helix (each needs the previous key). See **Large map** above for the 5-minute cruise and the jitter check.  
    - Begin: no re-entry prompt.  
-   - Zoom out (`ZOOM_MIN` 0.015): several planet dots + lots of void. Radar shows all eight plus Hab-7’s diamond.  
+   - Zoom out (`ZOOM_MIN` 0.0008): planet pips + lots of void. Radar shows all eight plus Hab-7’s diamond.  
    - Fly away from Cinder: ship coasts with **no gravity**. HUD arrow still names Cinder + distance.  
-   - Reach another world only after a long empty-space run. Re-entry prompt appears only in a local halo.
+   - Reach another world only after a long empty-space run. Re-entry prompt appears only in a local halo.  
+   - Zoom in far from the origin: no camera wobble.
 
 ---
 
@@ -133,7 +162,7 @@ Recorded against the running Vite server on `:47331` (`?playtest=1`) while the p
 
 ### Space
 
-- Ship starts near orange **Cinder** but **outside** the local re-entry halo (`SPAWN_CLEARANCE` 2200 from the surface, `REENTRY_RANGE` 520). Wave rocks spawn 900–3100px out; at default/zoom-out they read as tiny outlines, not a dogfight.
+- Ship starts near orange **Cinder** but **outside** the local re-entry halo (`SPAWN_CLEARANCE` is 16000 from the surface now, `REENTRY_RANGE` 520). Wave rocks spawn a couple of seconds out at the current cruise, not across the whole map. At intro zoom they read as small outlines until you zoom in.
 - Re-entry callout is the HTML `#prompt` pill only. `drawNavMarker` no longer draws `{name} · E` on-planet (that used `14 / zoom` in screen space and exploded at `ZOOM_MIN`). Off-screen nav arrow + distance stay. Planet names in `drawPlanets` use a screen-pixel font cap.
 - `HULL BREACH` banner is the right death sting (no longer “RE-ENTRY”).
 - Objective **DEFEAT EMBER WARDEN** and `Rime LOCKED` are on-screen in space. Good fantasy; they compete with the planet.
@@ -170,7 +199,7 @@ Recorded against the running Vite server on `:47331` (`?playtest=1`) while the p
 
 ### Performance
 
-- Canvas 640k×480k starfield (stars are screen-space) + cavern tiles. Rocks still spawn near the ship (`MAX_ROCKS` 40).
+- Canvas starfield is screen-space parallax (three depths plus dust) over world-space nebula washes. Rocks still spawn near the ship (`MAX_ROCKS` 40).
 
 ---
 

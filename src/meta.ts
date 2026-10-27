@@ -66,7 +66,7 @@ export const FUEL_IDLE = 0.6;
 export const FUEL_THRUST = 9;
 export const ENERGY_DRAIN = 11;
 export const ENERGY_HIT = 16;
-/** Hab-7 Engines row. Level 5 is the ~5 minute long-axis cruise. */
+/** Hab-7 Engines row. Level 5 crosses the 6.4M long axis in ~5 min. */
 export const ENGINES_MAX = 5;
 
 const SAVE_KEY = "reentry-save";

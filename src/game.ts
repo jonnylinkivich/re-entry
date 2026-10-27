@@ -17,6 +17,7 @@ import {
 import { BOSS_BY_PLANET, PlanetBoss } from "./boss.ts";
 import {
   DOCK_RANGE,
+  MAP_SCALE,
   PLANETS,
   SPACE_H,
   SPACE_W,
@@ -183,7 +184,12 @@ type Star = {
   phase: number;
   speed: number;
   tint: string;
+  /** Screen pixels of drift per world unit. Tuned so full cruise still reads as parallax, not a streak. */
+  parallax: number;
+  cross: boolean;
 };
+type Dust = { x: number; y: number; parallax: number; tint: string };
+type Nebula = { x: number; y: number; r: number; inner: string; outer: string };
 type Pointer = { x: number; y: number; down: boolean; at: number };
 
 type SpaceHold = {
@@ -203,23 +209,19 @@ const SHIP_R = 12;
 const PET_R = 8;
 const TURN = 4.8;
 const THRUST = 360;
-const MAX_SPEED_SPACE = 880;
 const MAX_SPEED_CAVE = 390;
 const SPACE_DRAG = 0.32;
 const CAVE_DRAG = 0.12;
 /**
- * Hab-7 engines (meta.engines, 0..ENGINES_MAX). Fully upgraded long-axis
- * cruise is about 5 minutes on the current field:
- *   SPACE_W is 640000, so 640000 / 300s ≈ 2133 u/s.
- * The cap is pinned to that 640000 — do not retie it if SPACE_W grows later.
- * Space drag is `v *= 1 - SPACE_DRAG·dt` (0.32). A speed cap is reachable
- * while thrusting only when THRUST > cap * 0.32 (360 > 880 * 0.32 today).
- * Thrust scales with the cap so that stays true (about 873 at max, still
- * above 2133 * 0.32). Caverns keep THRUST and MAX_SPEED_CAVE.
+ * Hab-7 engines (meta.engines, 0..ENGINES_MAX). The 640k ladder is scaled
+ * onto this field so the crossing times stay the same:
+ *   level 0 = 880 * MAP_SCALE = 8800 u/s   (~12.1 min on the long axis)
+ *   level 5 = SPACE_W / 300     = 21333 u/s (exactly 300s)
+ * Thrust scales from the old 360 u/s² at 880 u/s, so SPACE_DRAG 0.32 still
+ * lets a held burn sit on the cap. Caverns keep THRUST and MAX_SPEED_CAVE.
  */
-const ENGINES_FIELD_W = 640000;
-const ENGINES_CROSSING_SEC = 300;
-const ENGINES_SPEED_CAP = ENGINES_FIELD_W / ENGINES_CROSSING_SEC;
+const STOCK_SPEED_SPACE = 880 * MAP_SCALE;
+const ENGINES_SPEED_CAP = SPACE_W / 300;
 const BULLET_SPEED = 620;
 const BULLET_LIFE = 1.05;
 const MAX_PETS = 2;
@@ -236,10 +238,18 @@ const PICKUP_LOOK: Record<LootKind, { color: string; mark: string }> = {
   pet: { color: "#7dffb1", mark: "P" },
   fuel: { color: "#ffe08a", mark: "F" },
 };
-const ZOOM_MIN = 0.015;
+/**
+ * Old floor was 0.015 on the 640k map (~13% of the width on a 1280px window).
+ * 0.008 / MAP_SCALE keeps that fraction and opens it a little so a planet hop
+ * can fit when zoomed all the way out. Intro zoom is wide enough that Cinder
+ * (SPAWN_CLEARANCE off the ship) and a boosted ship glyph share a 1280px frame.
+ */
+const ZOOM_MIN = 0.008 / MAP_SCALE;
 const ZOOM_MAX = 3.6;
-/** Opening view. A notch past 1× so the first rocks read as a fight, not specks. */
+/** Combat zoom used as a recovery target if the camera zoom goes non-finite. */
 const ZOOM_START = 1.28;
+/** Wide intro so Cinder and the ship share a 1280px frame on the 6.4M map. */
+const SPACE_INTRO_ZOOM = 0.34 / MAP_SCALE;
 /** Halo from the planet surface. `nearestPlanet` adds `radius`, so the prompt is local. */
 const REENTRY_RANGE = 520;
 /** Away-spawns must stay this far from the ship (world clamp used to drop rocks on you). */
@@ -278,15 +288,15 @@ function enginesLevel(level: number): number {
   return clamp(Math.floor(level) || 0, 0, ENGINES_MAX);
 }
 
-/** Space speed cap at this engines level. Level 0 is MAX_SPEED_SPACE; max is ~2133. */
+/** Space speed cap at this engines level. Level 0 is stock; level 5 is SPACE_W / 300. */
 function spaceMaxSpeed(level: number): number {
   const t = enginesLevel(level) / ENGINES_MAX;
-  return MAX_SPEED_SPACE + (ENGINES_SPEED_CAP - MAX_SPEED_SPACE) * t;
+  return STOCK_SPEED_SPACE + (ENGINES_SPEED_CAP - STOCK_SPEED_SPACE) * t;
 }
 
-/** Space thrust. Same cap ratio as level 0 so drag does not undershoot the cap. */
+/** Space thrust. Same ratio as 360 u/s² at 880 u/s on the old chart. */
 function spaceThrust(level: number): number {
-  return THRUST * (spaceMaxSpeed(level) / MAX_SPEED_SPACE);
+  return THRUST * (spaceMaxSpeed(level) / 880);
 }
 
 function dist2(ax: number, ay: number, bx: number, by: number): number {
@@ -393,6 +403,11 @@ export class Game {
   private pets: Pet[] = [];
   private floaters: Floater[] = [];
   private stars: Star[] = [];
+  private dust: Dust[] = [];
+  private nebulae: Nebula[] = [];
+  /** Pixel-snapped camera origin. World draws subtract this in float64. */
+  private renderOx = 0;
+  private renderOy = 0;
   private keys = new Set<string>();
   /** Analog virtual stick. Keyboard flight does not write these. */
   private stickTurn = 0;
@@ -456,6 +471,7 @@ export class Game {
     this.showFps = playtestFlags().boost;
     this.snapCam();
     this.rebuildStars();
+    this.rebuildNebulae();
     this.decorateMenu();
   }
 
@@ -615,14 +631,14 @@ export class Game {
     this.credits = this.meta.credits;
     this.fuel = this.runBoost ? Math.max(this.meta.maxFuel, 120) : this.meta.maxFuel;
     this.energy = this.runBoost ? Math.max(this.meta.maxEnergy, 80) : this.meta.maxEnergy;
+    this.zoom = SPACE_INTRO_ZOOM;
+    this.zoomWanted = SPACE_INTRO_ZOOM;
     const home = PLANETS[0];
     this.ship = this.freshShip(home.x + home.radius + SPAWN_CLEARANCE, home.y);
     this.ship.angle = Math.PI;
     this.applyMetaLoadout();
     this.rocks = [];
     this.seed = (Math.random() * 1e9) | 0;
-    this.zoomWanted = ZOOM_START;
-    this.zoom = ZOOM_START;
     this.snapCam();
     this.spawnWave(this.wave);
     this.clearHazardsNearShip(this.wave <= 1 ? 70 : ROCK_CLEAR_R);
@@ -836,14 +852,13 @@ export class Game {
       ctx.translate(Math.sin(a) * mag, Math.cos(a * 1.31) * mag);
     }
     const z = this.zoom;
-    // Snap the camera to screen pixels to cut float32 jitter on the 640k map.
-    const snapX = Math.round(this.camX * z) / z;
-    const snapY = Math.round(this.camY * z) / z;
-    ctx.scale(z, z);
-    ctx.translate(-snapX, -snapY);
+    // Camera-local render. Subtracting the snapped camera in float64 keeps
+    // every canvas coordinate near the view, so the float32 CTM never holds
+    // a multi-million translation (that was the 6.4M-map jitter).
+    this.beginWorldCamera(ctx);
 
     if (this.cavern) {
-      drawCavern(ctx, this.cavern, this.camX, this.camY, this.w / z, this.h / z, z);
+      drawCavern(ctx, this.cavern, this.camX, this.camY, this.w / z, this.h / z, z, this.renderOx, this.renderOy);
     } else {
       this.drawPlanets(ctx);
       this.drawStation(ctx);
@@ -865,7 +880,7 @@ export class Game {
       if (this.inView(pet.x, pet.y, 16)) this.drawPet(ctx, pet);
     }
     if (this.boss?.alive && this.inView(this.boss.x, this.boss.y, this.boss.def.radius + 80)) {
-      this.boss.draw(ctx, this.zoom);
+      this.boss.draw(ctx, this.zoom, this.renderOx, this.renderOy);
     }
     if (this.mode !== "menu") this.drawShip(ctx);
     for (const floater of this.floaters) {
@@ -873,6 +888,7 @@ export class Game {
     }
 
     ctx.restore();
+    this.drawSpaceLabels(ctx);
     this.drawBanner(ctx);
     this.drawNavMarker(ctx);
     if (this.mode !== "menu") this.drawMinimap(ctx);
@@ -894,7 +910,7 @@ export class Game {
 
   private loadoutLabels(): string[] {
     const keys = this.ownedKeys();
-    const key = `${this.gear.twin ? 1 : 0}${this.gear.spread ? 1 : 0}${this.gear.rapid ? 1 : 0}${this.ship.shielding ? 1 : 0}:${this.pets.length}:${this.tankMax()}:${this.meta.salvageRate}:${this.meta.engines}:${keys.join(",")}`;
+    const key = `${this.gear.twin ? 1 : 0}${this.gear.spread ? 1 : 0}${this.gear.rapid ? 1 : 0}${this.ship.shielding ? 1 : 0}:${this.pets.length}:${this.tankMax()}:${this.meta.salvageRate}:${this.flightEngines()}:${keys.join(",")}`;
     if (key === this.loadoutCacheKey) return this.loadoutCached;
     const tags: string[] = [];
     if (this.gear.twin) tags.push("Twin");
@@ -904,8 +920,9 @@ export class Game {
     if (this.pets.length === 1) tags.push("Pet");
     if (this.pets.length > 1) tags.push(`${this.pets.length} Pets`);
     tags.push(`Tank ${Math.round(this.tankMax())}`);
-    if (this.meta.engines > 0) tags.push(`Mk ${this.meta.engines}`);
+    if (this.flightEngines() > 0) tags.push(`Mk ${this.flightEngines()}`);
     tags.push(salvageLabel(this.meta.salvageRate));
+    tags.push(`Cruise ${Math.round(spaceMaxSpeed(this.flightEngines()))}`);
     for (const id of keys) {
       if (id === "helix") tags.push("Helix Clear");
       else tags.push(titleKey(id));
@@ -998,7 +1015,7 @@ export class Game {
       this.meta.salvageRate = this.meta.salvageRate < 0.75 ? 0.75 : 1;
     } else if (id === "energy") {
       this.energy = this.energyMax();
-    } else if (id === "fuel") {
+    }     else if (id === "fuel") {
       this.fuel = this.tankMax();
     } else if (id === "engines") {
       this.meta.engines = Math.min(ENGINES_MAX, this.meta.engines + 1);
@@ -1110,6 +1127,39 @@ export class Game {
     this.snapCam();
   }
 
+  /** Saved Hab-7 level, or Mk 5 for a `?playtest=1` run (not written to the save). */
+  private flightEngines(): number {
+    const owned = enginesLevel(this.meta.engines);
+    return this.runBoost ? ENGINES_MAX : owned;
+  }
+
+  private beginWorldCamera(ctx: CanvasRenderingContext2D): void {
+    const z = this.zoom;
+    this.renderOx = Math.round(this.camX * z) / z;
+    this.renderOy = Math.round(this.camY * z) / z;
+    ctx.scale(z, z);
+  }
+
+  private rx(x: number): number {
+    return x - this.renderOx;
+  }
+
+  private ry(y: number): number {
+    return y - this.renderOy;
+  }
+
+  /** Grow a world-space sprite so it stays at least `minScreen` pixels when zoomed out. */
+  private markerBoost(span: number, minScreen: number): number {
+    const screen = span * this.zoom;
+    if (screen >= minScreen) return 1;
+    return minScreen / Math.max(screen, 1e-4);
+  }
+
+  /** World radius/size that is at least `minScreen` pixels at the current zoom. */
+  private worldSpanForScreen(span: number, minScreen: number): number {
+    return span * this.markerBoost(span, minScreen);
+  }
+
   private viewW(): number {
     return this.w / this.zoom;
   }
@@ -1154,20 +1204,64 @@ export class Game {
 
   private rebuildStars(): void {
     const stars: Star[] = [];
+    const dust: Dust[] = [];
     const rand = mulberry(9041);
     const tints = ["#f4f7ff", "#c8e8ff", "#ffe9c4", "#d4fff0", "#ffd0ea"];
-    for (let i = 0; i < 160; i++) {
-      stars.push({
+    const layers = [
+      { n: 240, parallax: 0.00028, s0: 0.6, s1: 1.3, cross: false },
+      { n: 150, parallax: 0.00095, s0: 1, s1: 2.1, cross: false },
+      { n: 72, parallax: 0.0022, s0: 1.5, s1: 3.1, cross: true },
+    ];
+    for (const layer of layers) {
+      for (let i = 0; i < layer.n; i++) {
+        const tint = tints[Math.floor(rand() * tints.length)] ?? "#f4f7ff";
+        stars.push({
+          x: rand(),
+          y: rand(),
+          z: 0.18 + rand() * 0.82,
+          s: layer.s0 + rand() * (layer.s1 - layer.s0),
+          phase: rand() * Math.PI * 2,
+          speed: 1.2 + rand() * 5.5,
+          tint,
+          parallax: layer.parallax * (0.75 + rand() * 0.5),
+          cross: layer.cross && rand() > 0.55,
+        });
+      }
+    }
+    const dustTints = ["#24304a", "#3a2a38", "#1c3330", "#2a3350"];
+    for (let i = 0; i < 200; i++) {
+      dust.push({
         x: rand(),
         y: rand(),
-        z: 0.18 + rand() * 0.82,
-        s: 0.7 + rand() * 2.2,
-        phase: rand() * Math.PI * 2,
-        speed: 1.2 + rand() * 5.5,
-        tint: tints[Math.floor(rand() * tints.length)] ?? "#f4f7ff",
+        parallax: 0.0032 + rand() * 0.0016,
+        tint: dustTints[Math.floor(rand() * dustTints.length)] ?? "#24304a",
       });
     }
     this.stars = stars;
+    this.dust = dust;
+  }
+
+  private rebuildNebulae(): void {
+    const rand = mulberry(77021);
+    const palette: [string, string][] = [
+      ["rgba(56, 96, 180, 0.32)", "rgba(56, 96, 180, 0)"],
+      ["rgba(150, 48, 110, 0.26)", "rgba(150, 48, 110, 0)"],
+      ["rgba(36, 120, 110, 0.22)", "rgba(36, 120, 110, 0)"],
+      ["rgba(120, 70, 180, 0.2)", "rgba(120, 70, 180, 0)"],
+      ["rgba(180, 90, 40, 0.16)", "rgba(180, 90, 40, 0)"],
+    ];
+    const blobs: Nebula[] = [];
+    for (let i = 0; i < 16; i++) {
+      const tint = palette[i % palette.length] ?? palette[0];
+      blobs.push({
+        x: (0.05 + rand() * 0.9) * SPACE_W,
+        y: (0.05 + rand() * 0.9) * SPACE_H,
+        r: (0.04 + rand() * 0.055) * Math.min(SPACE_W, SPACE_H),
+        inner: tint[0],
+        outer: tint[1],
+      });
+    }
+    this.nebulae = blobs;
   }
 
   private decorateMenu(): void {
@@ -1216,10 +1310,45 @@ export class Game {
         reversing: self.ship.reversing,
         stickTurn: self.stickTurn,
         stickThrust: self.stickThrust,
-        engines: self.meta.engines,
-        spaceSpeed: Math.round(spaceMaxSpeed(self.meta.engines)),
+        engines: self.flightEngines(),
+        spaceSpeed: Math.round(spaceMaxSpeed(self.flightEngines())),
         keys: [...self.keys],
       }),
+      reentryPlace: (x: number, y: number) => {
+        self.zone = "space";
+        self.cavern = null;
+        self.boss = null;
+        self.ship.x = x;
+        self.ship.y = y;
+        self.ship.vx = 0;
+        self.ship.vy = 0;
+        self.ship.angle = 0;
+        self.snapCam();
+      },
+      reentryWarpEdge: () => {
+        self.zone = "space";
+        self.cavern = null;
+        self.boss = null;
+        self.ship.x = 200;
+        self.ship.y = SPACE_H * 0.5;
+        self.ship.vx = spaceMaxSpeed(self.flightEngines());
+        self.ship.vy = 0;
+        self.ship.angle = 0;
+        self.zoom = SPACE_INTRO_ZOOM;
+        self.zoomWanted = SPACE_INTRO_ZOOM;
+        self.snapCam();
+      },
+      reentryCruise: () => {
+        const speed = spaceMaxSpeed(self.flightEngines());
+        return {
+          speed,
+          longAxis: SPACE_W,
+          seconds: SPACE_W / speed,
+          engines: self.flightEngines(),
+          x: self.ship.x,
+          y: self.ship.y,
+        };
+      },
     });
   }
 
@@ -1410,6 +1539,8 @@ export class Game {
     this.zone = "cavern";
     this.planet = planet;
     this.cavern = cavern;
+    this.zoom = 1;
+    this.zoomWanted = 1;
     this.rocks = [];
     this.pickups = [];
     this.bullets = [];
@@ -1451,6 +1582,8 @@ export class Game {
     this.planet = null;
     this.cavern = null;
     this.boss = null;
+    this.zoom = SPACE_INTRO_ZOOM;
+    this.zoomWanted = SPACE_INTRO_ZOOM;
     if (hold) {
       this.rocks = hold.rocks;
       this.pickups = hold.pickups;
@@ -1658,10 +1791,15 @@ export class Game {
       let placed = false;
       const clearR = close ? SHIP_R + radius + 16 : ROCK_CLEAR_R;
       const clear2 = clearR * clearR;
+      // Later waves scale with the view and cruise so a fast ship still has a
+      // couple of seconds before contact. The opening wave stays in-frame.
+      const view = Math.max(this.viewW(), this.viewH());
+      const cruise = this.zone === "cavern" ? MAX_SPEED_CAVE : spaceMaxSpeed(this.flightEngines());
+      const reach = Math.max(ROCK_CLEAR_R, Math.min(view * 0.72, cruise * 2.2));
       const band = close ? this.openingBand(radius) : null;
       for (let attempt = 0; attempt < 16; attempt++) {
         const ang = opts.angle != null ? opts.angle + (rand() - 0.5) * 0.5 : rand() * Math.PI * 2;
-        const dist = band ? band.min + rand() * (band.max - band.min) : ROCK_CLEAR_R + rand() * 2400;
+        const dist = band ? band.min + rand() * (band.max - band.min) : reach + rand() * reach * 0.9;
         x = this.ship.x + Math.cos(ang) * dist;
         y = this.ship.y + Math.sin(ang) * dist;
         x = clamp(x, radius + 40, ww - radius - 40);
@@ -1760,7 +1898,7 @@ export class Game {
 
     if (ship.thrusting || ship.reversing) {
       const dir = ship.reversing ? -1 : 1;
-      const base = this.zone === "space" ? spaceThrust(this.meta.engines) : THRUST;
+      const base = this.zone === "space" ? spaceThrust(this.flightEngines()) : THRUST;
       const power = (ship.reversing ? base * 0.7 : base) * Math.abs(thrust);
       ship.vx += Math.cos(ship.angle) * power * dir * dt;
       ship.vy += Math.sin(ship.angle) * power * dir * dt;
@@ -1783,7 +1921,7 @@ export class Game {
       this.fuel = Math.max(0, this.fuel - FUEL_IDLE * dt);
     }
 
-    const maxSpeed = this.zone === "cavern" ? MAX_SPEED_CAVE : spaceMaxSpeed(this.meta.engines);
+    const maxSpeed = this.zone === "cavern" ? MAX_SPEED_CAVE : spaceMaxSpeed(this.flightEngines());
     const speed = Math.hypot(ship.vx, ship.vy);
     if (speed > maxSpeed) {
       ship.vx = (ship.vx / speed) * maxSpeed;
@@ -1881,8 +2019,8 @@ export class Game {
       this.bullets.push({
         x: px,
         y: py,
-        vx: Math.cos(a) * BULLET_SPEED + ship.vx * 0.2,
-        vy: Math.sin(a) * BULLET_SPEED + ship.vy * 0.2,
+        vx: Math.cos(a) * BULLET_SPEED + ship.vx,
+        vy: Math.sin(a) * BULLET_SPEED + ship.vy,
         life: BULLET_LIFE,
         team: "ship",
       });
@@ -1923,10 +2061,18 @@ export class Game {
       pet.phase += dt * 1.4;
       const tx = ship.x + Math.cos(orbit) * 42 - Math.cos(ship.angle) * 28;
       const ty = ship.y + Math.sin(orbit) * 42 - Math.sin(ship.angle) * 28;
-      pet.vx += (tx - pet.x) * 7 * dt;
-      pet.vy += (ty - pet.y) * 7 * dt;
-      pet.vx *= Math.max(0, 1 - 4.2 * dt);
-      pet.vy *= Math.max(0, 1 - 4.2 * dt);
+      if (this.cavern) {
+        pet.vx += (tx - pet.x) * 7 * dt;
+        pet.vy += (ty - pet.y) * 7 * dt;
+        pet.vx *= Math.max(0, 1 - 4.2 * dt);
+        pet.vy *= Math.max(0, 1 - 4.2 * dt);
+      } else {
+        // Match cruise velocity or the drone is left screens behind at full engines.
+        const dx = tx - pet.x;
+        const dy = ty - pet.y;
+        pet.vx = ship.vx + clamp(dx * 5, -800, 800);
+        pet.vy = ship.vy + clamp(dy * 5, -800, 800);
+      }
       if (this.cavern) {
         const moved = moveAgainst(this.cavern, pet.x, pet.y, pet.vx * dt, pet.vy * dt, PET_R, 0.2);
         pet.x = moved.x;
@@ -1958,8 +2104,8 @@ export class Game {
           this.bullets.push({
             x: pet.x + Math.cos(pet.angle) * 10,
             y: pet.y + Math.sin(pet.angle) * 10,
-            vx: Math.cos(pet.angle) * 520,
-            vy: Math.sin(pet.angle) * 520,
+            vx: Math.cos(pet.angle) * 520 + pet.vx,
+            vy: Math.sin(pet.angle) * 520 + pet.vy,
             life: 0.85,
             team: "pet",
           });
@@ -2436,12 +2582,18 @@ export class Game {
     }
     ctx.fillStyle = "#000108";
     ctx.fillRect(0, 0, w, h);
-    const key = `${w}x${h}`;
+    const driftX = ((this.camX * 0.00022) % w + w) % w;
+    const driftY = ((this.camY * 0.00018) % h + h) % h;
+    const key = `${w}x${h}:${Math.round(driftX / 48)}:${Math.round(driftY / 48)}`;
     if (this.nebulaKey !== key || !this.nebulaCool || !this.nebulaWarm) {
-      const cool = ctx.createRadialGradient(w * 0.28, h * 0.22, 0, w * 0.28, h * 0.22, w * 0.85);
+      const cx = (w * 0.28 - driftX + w) % w;
+      const cy = (h * 0.22 - driftY + h) % h;
+      const cool = ctx.createRadialGradient(cx, cy, 0, cx, cy, w * 0.85);
       cool.addColorStop(0, "rgba(48, 72, 128, 0.38)");
       cool.addColorStop(1, "rgba(0, 0, 0, 0)");
-      const warm = ctx.createRadialGradient(w * 0.78, h * 0.7, 0, w * 0.78, h * 0.7, w * 0.7);
+      const wx = (w * 0.78 - driftX * 0.6 + w) % w;
+      const wy = (h * 0.7 - driftY * 0.6 + h) % h;
+      const warm = ctx.createRadialGradient(wx, wy, 0, wx, wy, w * 0.7);
       warm.addColorStop(0, "rgba(90, 32, 70, 0.28)");
       warm.addColorStop(1, "rgba(0, 0, 0, 0)");
       this.nebulaCool = cool;
@@ -2452,7 +2604,35 @@ export class Game {
     ctx.fillRect(0, 0, w, h);
     ctx.fillStyle = this.nebulaWarm;
     ctx.fillRect(0, 0, w, h);
+    this.drawNebulae(ctx);
     this.drawStars(ctx);
+  }
+
+  private drawNebulae(ctx: CanvasRenderingContext2D): void {
+    const z = this.zoom;
+    const w = this.w;
+    const h = this.h;
+    const limit = Math.hypot(w, h) * 2.4;
+    for (const blob of this.nebulae) {
+      const sx = (blob.x - this.camX) * z;
+      const sy = (blob.y - this.camY) * z;
+      const sr = blob.r * z;
+      if (sr < 8) continue;
+      if (sx + sr < -20 || sy + sr < -20 || sx - sr > w + 20 || sy - sr > h + 20) continue;
+      if (sr > limit) {
+        ctx.save();
+        ctx.globalAlpha = 0.45;
+        ctx.fillStyle = blob.inner;
+        ctx.fillRect(0, 0, w, h);
+        ctx.restore();
+        continue;
+      }
+      const g = ctx.createRadialGradient(sx, sy, Math.max(1, sr * 0.05), sx, sy, sr);
+      g.addColorStop(0, blob.inner);
+      g.addColorStop(1, blob.outer);
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
+    }
   }
 
   private drawStars(ctx: CanvasRenderingContext2D): void {
@@ -2461,62 +2641,80 @@ export class Game {
     const camY = this.camY;
     const sw = this.w;
     const sh = this.h;
+    ctx.globalAlpha = 0.45;
+    for (const mote of this.dust) {
+      const x = ((mote.x * sw - camX * mote.parallax) % sw + sw) % sw;
+      const y = ((mote.y * sh - camY * mote.parallax) % sh + sh) % sh;
+      ctx.fillStyle = mote.tint;
+      ctx.fillRect(x, y, 2, 2);
+    }
     for (const star of this.stars) {
-      const x = ((star.x * sw - camX * star.z * 0.03) % sw + sw) % sw;
-      const y = ((star.y * sh - camY * star.z * 0.03) % sh + sh) % sh;
+      const x = ((star.x * sw - camX * star.parallax) % sw + sw) % sw;
+      const y = ((star.y * sh - camY * star.parallax) % sh + sh) % sh;
       let u = t * star.speed + star.phase;
       u = u * 0.159154943 - Math.floor(u * 0.159154943);
       const wave = u < 0.5 ? u * 2 : 2 - u * 2;
       const blink = wave * wave;
-      const alpha = (0.12 + star.z * 0.55) * (0.2 + 1.15 * blink);
-      ctx.globalAlpha = clamp(alpha, 0.04, 1);
+      const alpha = (0.14 + star.z * 0.6) * (0.25 + 1.05 * blink);
+      ctx.globalAlpha = clamp(alpha, 0.05, 1);
       ctx.fillStyle = star.tint;
-      const size = star.s * (0.7 + blink * 0.9);
+      const size = star.s * (0.7 + blink * 0.85);
       ctx.fillRect(x, y, size, size);
+      if (star.cross) {
+        ctx.globalAlpha = clamp(alpha * 0.7, 0.05, 0.8);
+        ctx.fillRect(x - size, y + size * 0.35, size * 3, Math.max(1, size * 0.3));
+        ctx.fillRect(x + size * 0.35, y - size, Math.max(1, size * 0.3), size * 3);
+      }
     }
     ctx.globalAlpha = 1;
   }
 
   private drawPlanets(ctx: CanvasRenderingContext2D): void {
     for (const planet of PLANETS) {
-      if (!this.inView(planet.x, planet.y, planet.radius + 80)) continue;
+      const drawR = this.worldSpanForScreen(planet.radius, 7);
+      if (!this.inView(planet.x, planet.y, drawR + 80)) continue;
       const unlocked = this.isUnlocked(planet.id);
+      const x = this.rx(planet.x);
+      const y = this.ry(planet.y);
       ctx.save();
       ctx.globalAlpha = unlocked ? 1 : 0.48;
       ctx.beginPath();
-      ctx.arc(planet.x, planet.y, planet.radius + 26, 0, Math.PI * 2);
+      ctx.arc(x, y, drawR + Math.max(26, 8 / this.zoom), 0, Math.PI * 2);
       ctx.fillStyle = planet.atmosphere;
       ctx.fill();
       ctx.beginPath();
-      ctx.arc(planet.x, planet.y, planet.radius, 0, Math.PI * 2);
+      ctx.arc(x, y, drawR, 0, Math.PI * 2);
       ctx.fillStyle = planet.color;
       ctx.fill();
       ctx.beginPath();
-      ctx.arc(planet.x - planet.radius * 0.28, planet.y - planet.radius * 0.28, planet.radius * 0.42, 0, Math.PI * 2);
+      ctx.arc(x - drawR * 0.28, y - drawR * 0.28, drawR * 0.42, 0, Math.PI * 2);
       ctx.fillStyle = "rgba(255,255,255,0.16)";
       ctx.fill();
-      if (planet.radius * this.zoom >= 10) {
-        ctx.fillStyle = "#eef3ff";
-        ctx.font = `700 ${this.worldFontPx(16)}px sans-serif`;
-        ctx.textAlign = "center";
-        ctx.fillText(planet.name, planet.x, planet.y + planet.radius + 22 / this.zoom);
-        if (!unlocked) {
-          ctx.fillStyle = "#ffb36b";
-          ctx.font = `700 ${this.worldFontPx(13)}px sans-serif`;
-          ctx.fillText("LOCKED", planet.x, planet.y + planet.radius + 40 / this.zoom);
-        }
+      if (planet.radius * this.zoom < 12) {
+        ctx.globalAlpha = unlocked ? 0.9 : 0.55;
+        ctx.strokeStyle = planet.color;
+        ctx.lineWidth = Math.max(1.2, 2 / this.zoom);
+        const arm = drawR + 5 / this.zoom;
+        ctx.beginPath();
+        ctx.moveTo(x - arm, y);
+        ctx.lineTo(x + arm, y);
+        ctx.moveTo(x, y - arm);
+        ctx.lineTo(x, y + arm);
+        ctx.stroke();
       }
       ctx.restore();
     }
   }
 
   private drawStation(ctx: CanvasRenderingContext2D): void {
-    if (!this.inView(STATION.x, STATION.y, STATION.radius + 80)) return;
+    const boost = this.markerBoost(STATION.radius * 2, 16);
+    if (!this.inView(STATION.x, STATION.y, STATION.radius * boost + 80)) return;
     const t = performance.now() * 0.001;
     ctx.save();
-    ctx.translate(STATION.x, STATION.y);
+    ctx.translate(this.rx(STATION.x), this.ry(STATION.y));
+    ctx.scale(boost, boost);
     ctx.strokeStyle = "rgba(126, 231, 255, 0.55)";
-    ctx.lineWidth = Math.max(1.6, 3.2 / this.zoom);
+    ctx.lineWidth = Math.max(1.6, 3.2 / this.zoom) / boost;
     ctx.beginPath();
     ctx.arc(0, 0, STATION.radius + 18, 0, Math.PI * 2);
     ctx.stroke();
@@ -2526,7 +2724,7 @@ export class Game {
     ctx.stroke();
     ctx.rotate(t * 0.35);
     ctx.strokeStyle = "#ff7ad9";
-    ctx.lineWidth = Math.max(1.2, 2.4 / this.zoom);
+    ctx.lineWidth = Math.max(1.2, 2.4 / this.zoom) / boost;
     ctx.strokeRect(-STATION.radius * 0.38, -STATION.radius * 0.22, STATION.radius * 0.76, STATION.radius * 0.44);
     ctx.beginPath();
     ctx.moveTo(-STATION.radius * 0.92, 0);
@@ -2541,18 +2739,14 @@ export class Game {
     ctx.strokeStyle = "#ffe08a";
     ctx.stroke();
     ctx.restore();
-    if (STATION.radius * this.zoom >= 10) {
-      ctx.fillStyle = "#7ee7ff";
-      ctx.font = `700 ${this.worldFontPx(15)}px sans-serif`;
-      ctx.textAlign = "center";
-      ctx.fillText(STATION.name, STATION.x, STATION.y + STATION.radius + 26 / this.zoom);
-    }
   }
 
   private drawRock(ctx: CanvasRenderingContext2D, rock: Rock): void {
     ctx.save();
-    ctx.translate(rock.x, rock.y);
+    ctx.translate(this.rx(rock.x), this.ry(rock.y));
     ctx.rotate(rock.rot);
+    const boost = this.markerBoost(rock.radius * 2, 8);
+    ctx.scale(boost, boost);
     ctx.beginPath();
     const verts = rock.verts;
     const n = verts.length;
@@ -2567,7 +2761,7 @@ export class Game {
     ctx.closePath();
     ctx.fillStyle = this.cavern ? "#0a0c10" : "#07080c";
     ctx.fill();
-    ctx.lineWidth = Math.max(1.15, 2.15 / this.zoom);
+    ctx.lineWidth = Math.max(1.15, 2.15 / this.zoom) / boost;
     ctx.strokeStyle = rock.stroke;
     ctx.stroke();
     ctx.restore();
@@ -2576,7 +2770,8 @@ export class Game {
   private drawBullet(ctx: CanvasRenderingContext2D, b: Bullet): void {
     ctx.fillStyle = b.team === "pet" ? "#7dffb1" : "#e8ffff";
     ctx.beginPath();
-    ctx.arc(b.x, b.y, b.team === "pet" ? 2 : 2.4, 0, Math.PI * 2);
+    const br = this.worldSpanForScreen(b.team === "pet" ? 2 : 2.4, 2);
+    ctx.arc(this.rx(b.x), this.ry(b.y), br, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -2584,9 +2779,11 @@ export class Game {
     const look = PICKUP_LOOK[p.kind];
     const pulse = 9 + Math.sin(performance.now() / 180) * 2;
     ctx.save();
-    ctx.translate(p.x, p.y);
+    ctx.translate(this.rx(p.x), this.ry(p.y));
+    const boost = this.markerBoost(18, 8);
+    ctx.scale(boost, boost);
     ctx.strokeStyle = look.color;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2 / boost;
     ctx.beginPath();
     if (p.kind === "credits" || p.kind === "ore") {
       ctx.moveTo(0, -pulse);
@@ -2598,13 +2795,11 @@ export class Game {
       ctx.arc(0, 0, pulse, 0, Math.PI * 2);
     }
     ctx.stroke();
-    if (this.zoom >= 0.35) {
-      ctx.fillStyle = look.color;
-      ctx.font = "700 9px sans-serif";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(look.mark, 0, 1);
-    }
+    ctx.fillStyle = look.color;
+    ctx.font = `700 ${9 / (boost * this.zoom)}px sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(look.mark, 0, 1);
     ctx.restore();
   }
 
@@ -2612,14 +2807,17 @@ export class Game {
     const a = clamp(s.life / s.max, 0, 1);
     ctx.globalAlpha = a;
     ctx.fillStyle = s.color;
-    ctx.fillRect(s.x, s.y, s.size, s.size);
+    const size = this.worldSpanForScreen(s.size, 1.6);
+    ctx.fillRect(this.rx(s.x), this.ry(s.y), size, size);
     ctx.globalAlpha = 1;
   }
 
   private drawPet(ctx: CanvasRenderingContext2D, pet: Pet): void {
     ctx.save();
-    ctx.translate(pet.x, pet.y);
+    ctx.translate(this.rx(pet.x), this.ry(pet.y));
     ctx.rotate(pet.angle);
+    const boost = this.markerBoost(20, 10);
+    ctx.scale(boost, boost);
     ctx.beginPath();
     ctx.moveTo(10, 0);
     ctx.lineTo(-7, 6);
@@ -2628,7 +2826,7 @@ export class Game {
     ctx.closePath();
     ctx.fillStyle = "#07140e";
     ctx.fill();
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2 / boost;
     ctx.strokeStyle = "#7dffb1";
     ctx.stroke();
     ctx.restore();
@@ -2638,13 +2836,15 @@ export class Game {
     const ship = this.ship;
     if (ship.invuln > 0 && Math.floor(ship.invuln * 12) % 2 === 0) return;
     ctx.save();
-    ctx.translate(ship.x, ship.y);
+    ctx.translate(this.rx(ship.x), this.ry(ship.y));
     ctx.rotate(ship.angle);
+    const boost = this.markerBoost(32, 12);
+    ctx.scale(boost, boost);
     if (ship.shielding) {
       ctx.beginPath();
       ctx.arc(0, 0, 18, 0, Math.PI * 2);
       ctx.strokeStyle = "rgba(126, 231, 255, 0.75)";
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2 / boost;
       ctx.stroke();
     }
     ctx.beginPath();
@@ -2655,7 +2855,7 @@ export class Game {
     ctx.closePath();
     ctx.fillStyle = "#0b1218";
     ctx.fill();
-    ctx.lineWidth = 2;
+    ctx.lineWidth = Math.max(2, 2 / this.zoom) / boost;
     ctx.strokeStyle = this.gear.rapid ? "#ff7ad9" : this.gear.spread ? "#c9a6ff" : "#7ee7ff";
     ctx.stroke();
     if (ship.thrusting || ship.reversing) {
@@ -2671,12 +2871,16 @@ export class Game {
   }
 
   private drawFloater(ctx: CanvasRenderingContext2D, f: Floater): void {
+    const sx = this.rx(f.x) * this.zoom;
+    const sy = this.ry(f.y) * this.zoom;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalAlpha = clamp(f.life * 1.6, 0, 1);
     ctx.fillStyle = f.color;
     ctx.font = "700 13px sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText(f.text, f.x, f.y);
-    ctx.globalAlpha = 1;
+    ctx.fillText(f.text, sx, sy);
+    ctx.restore();
   }
 
   private drawBanner(ctx: CanvasRenderingContext2D): void {
@@ -2706,17 +2910,44 @@ export class Game {
     const dy = poi.y - this.ship.y;
     const dist = Math.hypot(dx, dy);
     if (onScreen) {
-      // Name / LOCKED already come from drawPlanets. Re-entry is the HTML
-      // #prompt — a second "{name} · E" in screen space at 14/zoom explodes
-      // at ZOOM_MIN. Keep the off-screen arrow + distance only.
+      // Name / LOCKED are drawSpaceLabels. Re-entry is the HTML #prompt.
+      // Keep the off-screen arrow + distance only.
       return;
     }
     this.drawEdgeMarker(ctx, poi.x, poi.y, poi.color, `${poi.name}  ${Math.round(dist)}`);
   }
 
-  /** World-space font that stays a fixed screen-pixel size at any zoom. */
-  private worldFontPx(screenPx: number, minPx = 12, maxPx = 18): number {
-    return clamp(screenPx, minPx, maxPx) / this.zoom;
+  private drawSpaceLabels(ctx: CanvasRenderingContext2D): void {
+    if (this.cavern || this.mode === "cine") return;
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    for (const planet of PLANETS) {
+      const drawR = Math.max(planet.radius * this.zoom, 7);
+      if (!this.inView(planet.x, planet.y, planet.radius + drawR / this.zoom + 40)) continue;
+      const sx = (planet.x - this.camX) * this.zoom;
+      const sy = (planet.y - this.camY) * this.zoom;
+      const unlocked = this.isUnlocked(planet.id);
+      ctx.globalAlpha = unlocked ? 0.95 : 0.62;
+      ctx.fillStyle = "#eef3ff";
+      ctx.font = "700 15px sans-serif";
+      ctx.fillText(planet.name, sx, sy + drawR + 8);
+      if (!unlocked) {
+        ctx.fillStyle = "#ffb36b";
+        ctx.font = "700 12px sans-serif";
+        ctx.fillText("LOCKED", sx, sy + drawR + 24);
+      }
+    }
+    if (this.inView(STATION.x, STATION.y, STATION.radius + 80)) {
+      const sx = (STATION.x - this.camX) * this.zoom;
+      const sy = (STATION.y - this.camY) * this.zoom;
+      const drawR = Math.max(STATION.radius * this.markerBoost(STATION.radius * 2, 16) * this.zoom, 8);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = "#7ee7ff";
+      ctx.font = "700 14px sans-serif";
+      ctx.fillText(STATION.name, sx, sy + drawR + 6);
+    }
+    ctx.restore();
   }
 
   private drawEdgeMarker(
