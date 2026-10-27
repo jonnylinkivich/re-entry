@@ -1,6 +1,6 @@
 import "./style.css";
 import { unlockAudio } from "./audio.ts";
-import { Game, type HudSnapshot, type Mode } from "./game.ts";
+import { Game, fuelBand, type HudSnapshot, type Mode } from "./game.ts";
 import { SHOP_SECTIONS, type ShopRow } from "./shop.ts";
 
 function must<T extends Element>(value: T | null, id: string): T {
@@ -196,6 +196,9 @@ function syncLiveHud(snapshot: HudSnapshot): void {
     lastFuelW = fuelW;
     fuelBar.style.width = fuelW;
   }
+  const fuelState = fuelWrap.hidden ? "ok" : fuelBand(snapshot.fuel, snapshot.maxFuel);
+  fuelWrap.classList.toggle("is-low", fuelState === "low");
+  fuelWrap.classList.toggle("is-critical", fuelState === "critical");
   energyWrap.hidden = !playing;
   syncMute(snapshot.muted);
   const energyPct = snapshot.maxEnergy > 0 ? (snapshot.energy / snapshot.maxEnergy) * 100 : 0;
