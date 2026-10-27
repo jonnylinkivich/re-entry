@@ -176,6 +176,13 @@ Visual only. Same shop rows, prices, and speeds. Own the gear at Hab-7 (or pick 
 
 - **Field marks**: thirty-six seeded **SCRAP** / **SIP** rings (see **Salvage beacons**). One pass pays; the chart keeps a faint pip.
 
+## Checklist — mute-aware SFX
+
+Short synth one-shots, no asset files. Shot, hull hit, scrap/sip collect, shop buy, and void-fold enter share the neon bed’s mute path (`M` or the mute chip). They sit under the bed. Pause, shop, and cine still duck the bed; these stings stay short.
+
+- **Mute off:** Begin, hold Space — a short shot tick under the bed. `reentryBeacon(0)` and fly through the diamond — a short scrap/sip ping.
+- **Mute on:** `M` or the mute chip. The same shot and scrap pass are silent. The bed is silent too.
+
 ## Loop checks
 
 1. **Menu → space**  
@@ -244,7 +251,7 @@ Recorded against the running Vite server on `:47331` (`?playtest=1`) while the p
 ### Audio
 
 - SFX: thrust, shots, re-entry rumble, pickups. `#mute` speaker chip and `KeyM` both call `toggleMute` (#7). `muted` persists on `reentry-save`.
-- Music bed shipped in #13: `audio.ts` loops a generated neon loop after Begin. Pause, shop, cine, and game over duck it. Mute cuts music and SFX together.
+- Music bed shipped in #13: `audio.ts` loops a generated neon loop after Begin. Pause, shop, cine, and game over duck it. Mute cuts music and SFX together. Shot, hull, salvage, shop, and void-fold one-shots sit under the bed.
 
 ### Mobile / touch
 
@@ -290,7 +297,7 @@ Verified against `c6fc229`. Original main-branch P0 gravity / mute / death-banne
 
 | Issue | Hint |
 | --- | --- |
-| No music | **Fixed** (#13). `audio.ts` loops a generated neon bed (no audio files) after Begin. Peak stays under shots and thrust. Pause, shop, cine, and game over duck it. Mute cuts music and SFX together. |
+| No music | **Fixed** (#13). `audio.ts` loops a generated neon bed (no audio files) after Begin. Pause, shop, cine, and game over duck it. Mute cuts music and SFX together. Shot, hull, salvage, shop, and void-fold one-shots sit under the bed. |
 | Mobile is Fire-only | **Fixed** with P0 touch pads (L / Thrust / R / Rev + Fire). |
 | No shop for banked credits | **Fixed.** Hab-7 dock / shop overlay. |
 | Vite `base` | **Done for relative deploy:** `vite.config.ts` `base: "./"`. Root hosting still works; GitHub Pages project pages should keep `base: '/re-entry/'` or `./`. |
