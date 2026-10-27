@@ -48,14 +48,14 @@ Open space is a 40×30 bitset (cells of 160000²). The ship’s cell lights when
 
 ### Void folds
 
-Eight seeded blackholes (`mulberry` 4242), kept about 700000 apart and clear of planet centers and Hab-7. The core is a small black disc with magenta and cyan arcs. Radar marks are hollow magenta rings, distinct from planet discs and the Hab-7 diamond. Flying into the well (pull ~7200, capture ~1600, swept so a fast frame cannot skip the core) plays a short pull, then **VOID FOLD** drops you on the rim of the farthest other hole, outside planet solids and Hab-7, with nearby rocks cleared. A full-cruise graze of the outer rim can still slip past; aiming at the core, or coasting in the well, folds. A ~3.2s lock and a small outward shove stop an instant recapture. They stay landmarks on the 6.4M map.
+Eight seeded blackholes (`mulberry` 4242), kept about 700000 apart and clear of planet centers and Hab-7. The core is a small black disc with magenta and cyan arcs. Inside the well, a cheap screen-edge swirl and a cyan-violet ring pulse on the core telegraph the pull before capture. Radar marks are a violet open ring with a cyan cross — not the filled orange **SCRAP** or cyan **SIP** squares, and not planet discs or the Hab-7 diamond. Flying into the well (pull ~7200, capture ~1600, swept so a fast frame cannot skip the core) plays a short pull, then **VOID FOLD** drops you on the rim of the farthest other hole, outside planet solids and Hab-7, with nearby rocks cleared. Capture keeps the falling-sweep sting and adds a brief screen-edge flash; arrival plays a short neon pop at the new sector. Destinations are unchanged. A full-cruise graze of the outer rim can still slip past; aiming at the core, or coasting in the well, folds. A ~3.2s lock and a small outward shove stop an instant recapture. They stay landmarks on the 6.4M map.
 
 ### Verify
 
 1. `npm run build`, then preview `http://localhost:47331/?playtest=1&unlock=1`.
 2. Splash: fly into Cinder’s halo, press `E`. Card reads **RE-ENTRY** / **CINDER** in Cinder’s orange, scanlines, hint `E SPACE CLICK`. Wait — the dive starts by itself in about a second. Repeat on Rime (blue `#9ad8ff`). From the card, `E` or a canvas click jumps to the dive; a second `E` or click enters the cavern. Objective and the key chain still match the world you entered.
 3. Chart: after Begin, the spawn cell on the minimap is lit and the rest of the field is dark. Fly a straight burn for several seconds — a trail of cells lights behind you. Planets and the **H** diamond stay visible on dark cells. `Esc`: the **CHARTED** panel shows the same trail. Enter Cinder, then reload the page and Begin again. `reentryChart()` still reports `cells` > 1 and `planets` includes `"cinder"`. A fresh profile with no `visited` key starts dark except the new spawn cell.
-4. Void folds: `reentryHoles()` returns 8 points inside the map. `reentryFold(0)` parks you in a well (intro zoom, nose toward the core). Wait or tap thrust — speed bends in, sparks pull magenta/cyan, then the banner **VOID FOLD** and you are beside a different hole, not inside a planet and not on Hab-7. The minimap shows a hollow magenta ring at each hole, including on unvisited cells. Flying the empty field away from those rings still coasts with no general gravity.
+4. Void folds: `reentryHoles()` returns 8 points inside the map. `reentryFold(0)` parks you in a well (intro zoom, nose toward the core). Wait or tap thrust — a cyan-violet edge swirl builds, speed bends in, sparks pull magenta/cyan, then the banner **VOID FOLD**, a brief edge flash, a short neon pop, and you are beside a different hole, not inside a planet and not on Hab-7. The minimap shows a violet open ring and cyan cross at each hole, including on unvisited cells, distinct from salvage squares. Flying the empty field away from those marks still coasts with no general gravity.
 
 ---
 
@@ -69,7 +69,7 @@ The minimap and the `Esc` **CHARTED** panel draw a faint pip for each beacon, in
 
 1. Spot one at cruise: `?playtest=1`, Begin, hold `W`. An orange or cyan arc enters the view before the **SCRAP** or **SIP** diamond. `reentryBeacon(0)` parks a cruise approach. `reentryBeacons()` lists 36.
 2. Collect scrap: fly through the diamond. The floater reads **+1 CR** (scrap, or a sip on a full tank — `?playtest=1` starts full) or **+2 FUEL** when the tank has room. A second pass does not pay.
-3. Chart pip: the corner radar shows faint orange and cyan pips across the field, distinct from planet discs, the **H** diamond, and magenta void rings. `Esc` — **CHARTED** shows the same pips on dark cells.
+3. Chart pip: the corner radar shows faint orange and cyan squares across the field, distinct from planet discs, the **H** diamond, and the violet void-fold rings. `Esc` — **CHARTED** shows the same squares on dark cells.
 
 ---
 
@@ -176,6 +176,14 @@ Visual only. Same shop rows, prices, and speeds. Own the gear at Hab-7 (or pick 
 
 - **Field marks**: thirty-six seeded **SCRAP** / **SIP** rings (see **Salvage beacons**). One pass pays; the chart keeps a faint pip.
 
+## Checklist — void-fold telegraph
+
+Approach, then the warning, then the grab, then the new sector. Fold targets and the map size stay as they are.
+
+- **Approach:** `reentryFold(0)` parks you in a well. The corner radar and `Esc` **CHARTED** mark each hole as a violet open ring with a cyan cross, not an orange or cyan salvage square.
+- **Telegraph:** coast toward the core. A cyan-violet edge swirl and a ring pulse on the hole build before the grab. Capture still plays the falling-sweep sting and **VOID FOLD**, plus a brief screen-edge flash.
+- **Arrive:** you sit on the rim of a different hole. A short neon pop marks the new sector. Pull away and the swirl fades; empty space still has no general gravity.
+
 ## Checklist — mute-aware SFX
 
 Short synth one-shots, no asset files. Shot, hull hit, scrap/sip collect, shop buy, and void-fold enter share the neon bed’s mute path (`M` or the mute chip). They sit under the bed. Pause, shop, and cine still duck the bed; these stings stay short.
@@ -186,7 +194,7 @@ Short synth one-shots, no asset files. Shot, hull hit, scrap/sip collect, shop b
 ## Loop checks
 
 1. **Menu → space**  
-   Begin re-entry. You spawn **near Cinder but outside** the re-entry halo — no `Re-enter Cinder — E` on frame 1. HUD shows energy bar, objective **Defeat Ember Warden**. Nav arrow + distance still point at Cinder. Zoom out: planets are sparse dots on a 6.4M × 4.8M map. Radar shows eight planet discs, hollow magenta void rings, faint salvage pips, and Hab-7’s cyan diamond (**H**). Away from a void fold the ship coasts — open space has no general gravity. The spawn cell on the minimap is lit; the rest of the chart is dark.
+   Begin re-entry. You spawn **near Cinder but outside** the re-entry halo — no `Re-enter Cinder — E` on frame 1. HUD shows energy bar, objective **Defeat Ember Warden**. Nav arrow + distance still point at Cinder. Zoom out: planets are sparse dots on a 6.4M × 4.8M map. Radar shows eight planet discs, violet void-fold rings (cyan cross), faint salvage squares, and Hab-7’s cyan diamond (**H**). Away from a void fold the ship coasts — open space has no general gravity. The spawn cell on the minimap is lit; the rest of the chart is dark.
 
 2. **Gate prompt**  
    Long travel to Rime (empty space). Without a key, up close: `RIME LOCKED — need Cinder Key`. `E` must not start a dive. Same style for later worlds (`ASHEN LOCKED — need Vesper Key`, etc.).
@@ -217,8 +225,8 @@ Short synth one-shots, no asset files. Shot, hull hit, scrap/sip collect, shop b
 9. **Empty space / large map**  
    Map is **6400000 × 4800000**. Eight planets: Cinder → Rime → Mycel → Vesper → Ashen → Brine → Thorn → Helix (each needs the previous key). See **Large map** above for the 5-minute cruise and the jitter check.  
    - Begin: no re-entry prompt.  
-   - Zoom out (`ZOOM_MIN` 0.0008): planet pips + lots of void. Radar shows all eight, hollow magenta void rings, faint salvage pips, and Hab-7’s diamond.  
-   - Fly away from Cinder, clear of the magenta rings: ship coasts with **no general gravity**. HUD arrow still names Cinder + distance. A void fold is a local well only (see **Planet splash, chart, void folds**).  
+   - Zoom out (`ZOOM_MIN` 0.0008): planet pips + lots of void. Radar shows all eight, violet void-fold rings, faint salvage squares, and Hab-7’s diamond.  
+   - Fly away from Cinder, clear of the void-fold marks: ship coasts with **no general gravity**. HUD arrow still names Cinder + distance. A void fold is a local well only (see **Planet splash, chart, void folds**).  
    - Reach another world only after a long empty-space run. Re-entry prompt appears only in a local halo.  
    - Zoom in far from the origin: no camera wobble.
 

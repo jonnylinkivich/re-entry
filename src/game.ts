@@ -284,6 +284,9 @@ const HOLE_CAPTURE_R = 1600;
 const HOLE_EXIT = 2800;
 const HOLE_LOCK = 3.2;
 const HOLE_EXIT_SPEED = 1600;
+/** Capture edge flash, then the arrival pop. Visual only — fold routing is unchanged. */
+const FOLD_FLASH = 0.28;
+const FOLD_POP = 0.5;
 /**
  * Salvage landmarks on the 6.4M field. The ring is the cruise-scale read
  * (a thin stroke, not a gradient). The core is the fly-through.
@@ -519,6 +522,9 @@ export class Game {
   /** Consume E/Enter until release so a hold can still fire once we reach a halo. */
   private interactLatch = false;
   private holeLock = 0;
+  /** Screen-edge grab flash, then the arrival ring. Seconds left. */
+  private foldFlash = 0;
+  private foldPop = 0;
   /** One bit per beacon. Pays once per run; the mark stays up either way. */
   private beaconSpent = new Uint8Array(BEACONS.length);
   private chart = chartFromString("");
@@ -709,6 +715,8 @@ export class Game {
     this.ship = this.freshShip(home.x + home.radius + SPAWN_CLEARANCE, home.y);
     this.ship.angle = Math.PI;
     this.holeLock = 0;
+    this.foldFlash = 0;
+    this.foldPop = 0;
     this.beaconSpent.fill(0);
     this.noteVisit();
     this.applyMetaLoadout();
@@ -868,6 +876,8 @@ export class Game {
     if (!this.motionOk()) this.sanitizeView();
     this.fpsEma = this.fpsEma * 0.9 + (1 / Math.max(t, 1 / 240)) * 0.1;
     this.shake = Math.max(0, this.shake - t * 22);
+    this.foldFlash = Math.max(0, this.foldFlash - t);
+    this.foldPop = Math.max(0, this.foldPop - t);
     if (this.bannerLife > 0) {
       this.bannerLife -= t;
       if (this.bannerLife <= 0) this.banner = "";
@@ -974,6 +984,8 @@ export class Game {
     }
 
     ctx.restore();
+    this.drawHoleTelegraph(ctx);
+    this.drawFoldFx(ctx);
     this.drawSpaceLabels(ctx);
     this.drawBanner(ctx);
     this.drawNavMarker(ctx);
@@ -1336,6 +1348,8 @@ export class Game {
     this.burst(spot.x, spot.y, 16, "#ff5ec8", 240);
     this.burst(spot.x, spot.y, 10, "#7ee7ff", 180);
     this.shake = 11;
+    this.foldFlash = FOLD_FLASH;
+    this.foldPop = FOLD_POP;
     if (HOLES.length > 0) sfxFold();
     this.announce("VOID FOLD");
     this.noteVisit();
@@ -3480,10 +3494,23 @@ export class Game {
   }
 
   private drawHoles(ctx: CanvasRenderingContext2D): void {
-    const spin = performance.now() * 0.002;
+    const now = performance.now();
+    const spin = now * 0.002;
+    let nearId = -1;
+    let nearT = 0;
+    if (this.zone === "space" && this.holeLock <= 0) {
+      const near = this.nearestHole(HOLE_PULL_R);
+      if (near) {
+        nearId = near.id;
+        const d = Math.hypot(this.ship.x - near.x, this.ship.y - near.y);
+        nearT = clamp(1 - d / HOLE_PULL_R, 0, 1);
+      }
+    }
     for (const hole of HOLES) {
+      const pulling = hole.id === nearId && nearT > 0.03;
       const r = this.worldSpanForScreen(HOLE_VISUAL_R, 6);
-      if (!this.inView(hole.x, hole.y, r * 2)) continue;
+      const ring = pulling ? r * (2.15 + nearT * 1.15) : r;
+      if (!this.inView(hole.x, hole.y, Math.max(r * 2, ring))) continue;
       const x = this.rx(hole.x);
       const y = this.ry(hole.y);
       ctx.fillStyle = "#000108";
@@ -3499,7 +3526,104 @@ export class Game {
       ctx.beginPath();
       ctx.arc(x, y, r * 1.7, -spin * 1.3, -spin * 1.3 + 3.4);
       ctx.stroke();
+      if (!pulling) continue;
+      const pulse = 0.55 + 0.45 * Math.sin(now * 0.008);
+      ctx.globalAlpha = (0.22 + nearT * 0.5) * pulse;
+      ctx.lineWidth = Math.max(1.25, 1.8 / this.zoom);
+      ctx.strokeStyle = "#7ee7ff";
+      ctx.beginPath();
+      ctx.arc(x, y, ring, spin * 1.6, spin * 1.6 + 1.45);
+      ctx.stroke();
+      ctx.strokeStyle = "#c77dff";
+      ctx.beginPath();
+      ctx.arc(x, y, ring * 1.14, -spin * 1.8, -spin * 1.8 + 1.7);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
     }
+  }
+
+  /** Screen-edge swirl while the ship is inside a well, before the grab. */
+  private drawHoleTelegraph(ctx: CanvasRenderingContext2D): void {
+    if (this.mode === "menu" || this.mode === "over" || this.zone !== "space" || this.holeLock > 0) return;
+    const hole = this.nearestHole(HOLE_PULL_R);
+    if (!hole) return;
+    const d = Math.hypot(this.ship.x - hole.x, this.ship.y - hole.y);
+    const t = clamp(1 - d / HOLE_PULL_R, 0, 1);
+    if (t < 0.03) return;
+    const now = performance.now();
+    const spin = now * 0.00115;
+    const pulse = 0.6 + 0.4 * Math.sin(now * 0.0065);
+    const alpha = (0.1 + t * 0.4) * pulse;
+    const cx = this.w * 0.5;
+    const cy = this.h * 0.5;
+    const rx = this.w * 0.5 - 18;
+    const ry = this.h * 0.5 - 18;
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = "#7ee7ff";
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, spin, spin + 1.05);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, spin + 2.15, spin + 2.85);
+    ctx.stroke();
+    ctx.strokeStyle = "#c77dff";
+    ctx.globalAlpha = alpha * 0.9;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx - 8, ry - 8, 0, -spin * 1.25, -spin * 1.25 + 1.35);
+    ctx.stroke();
+    ctx.strokeStyle = "#ff5ec8";
+    ctx.globalAlpha = alpha * (0.35 + t * 0.4);
+    const breathe = 1 + 0.015 * Math.sin(now * 0.0042);
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, (rx - 16) * breathe, (ry - 16) * breathe, 0, spin * 0.6 + 0.8, spin * 0.6 + 2.1);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** Grab flash on the frame border, then a short neon ring at arrival. */
+  private drawFoldFx(ctx: CanvasRenderingContext2D): void {
+    if (this.foldFlash <= 0 && this.foldPop <= 0) return;
+    ctx.save();
+    ctx.lineCap = "round";
+    if (this.foldFlash > 0) {
+      const a = clamp(this.foldFlash / FOLD_FLASH, 0, 1);
+      const inset = 7;
+      ctx.lineWidth = 8 + (1 - a) * 20;
+      ctx.strokeStyle = a > 0.45 ? "#e8f7ff" : "#c77dff";
+      ctx.globalAlpha = 0.32 + a * 0.58;
+      ctx.strokeRect(inset, inset, this.w - inset * 2, this.h - inset * 2);
+      ctx.strokeStyle = "#7ee7ff";
+      ctx.globalAlpha = a * 0.5;
+      ctx.lineWidth = 3;
+      ctx.strokeRect(inset + 12, inset + 12, this.w - (inset + 12) * 2, this.h - (inset + 12) * 2);
+    }
+    if (this.foldPop > 0) {
+      const life = clamp(this.foldPop / FOLD_POP, 0, 1);
+      const grow = 1 - life;
+      const cx = this.w * 0.5;
+      const cy = this.h * 0.5;
+      const radius = 16 + grow * Math.min(this.w, this.h) * 0.2;
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = "#7ee7ff";
+      ctx.globalAlpha = life * 0.92;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = "#c77dff";
+      ctx.globalAlpha = life * 0.78;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius * 0.62, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = "#ff5ec8";
+      ctx.globalAlpha = life * 0.55;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius * 1.16, grow * 1.4, grow * 1.4 + 4.1);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   private drawPauseChart(ctx: CanvasRenderingContext2D): void {
@@ -3561,10 +3685,21 @@ export class Game {
     }
     ctx.globalAlpha = 1;
     for (const hole of HOLES) {
-      ctx.strokeStyle = "#ff5ec8";
-      ctx.lineWidth = labeled ? 1.6 : 1.2;
+      const hx = x + hole.x * sx;
+      const hy = y + hole.y * sy;
+      const r = labeled ? 6 : 4.2;
+      ctx.strokeStyle = "#c77dff";
+      ctx.lineWidth = labeled ? 1.7 : 1.35;
       ctx.beginPath();
-      ctx.arc(x + hole.x * sx, y + hole.y * sy, labeled ? 5 : 3.5, 0, Math.PI * 2);
+      ctx.arc(hx, hy, r, 0.5, 0.5 + Math.PI * 1.45);
+      ctx.stroke();
+      ctx.strokeStyle = "#7ee7ff";
+      ctx.lineWidth = labeled ? 1.35 : 1.1;
+      ctx.beginPath();
+      ctx.moveTo(hx - r * 0.72, hy);
+      ctx.lineTo(hx + r * 0.72, hy);
+      ctx.moveTo(hx, hy - r * 0.72);
+      ctx.lineTo(hx, hy + r * 0.72);
       ctx.stroke();
     }
     const hx = x + STATION.x * sx;
