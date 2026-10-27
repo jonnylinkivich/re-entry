@@ -21,12 +21,12 @@ stock    = 880 * MAP_SCALE = 8800 u/s
 
 Hab-7 still sells Engines Mk 1–5 at 45 CR each (`engines` 0..5). The ladder is the 640k chart scaled by `MAP_SCALE`, so crossing times match the old field: stock ~727s (12.1 min), Mk 5 exactly **300s**. Thrust scales from 360 u/s² at 880 u/s, and space drag stays 0.32, so a held burn sits on the cap. `?playtest=1` flies at Mk 5 for that run and does **not** write `engines` into `reentry-save`. Cavern thrust and cave top speed are unchanged. Bullets inherit ship velocity so shots still leave the nose while cruising. Pets match cruise velocity in open space.
 
-`SPAWN_CLEARANCE` is **16000** (not ×10). That is about 1.8s of base thrust outside the re-entry halo, so Begin still drops you beside Cinder. Intro zoom is `0.34 / MAP_SCALE` (0.034): on a 1280px window Cinder and a boosted ship glyph share the first frame. Zoom floor is `0.008 / MAP_SCALE` (0.0008). Rock waves spawn a couple of seconds out at the current cruise, capped by the view, and never use the full world as a spawn radius.
+`SPAWN_CLEARANCE` is **16000** (not ×10). That is about 1.8s of base thrust outside the re-entry halo, so Begin still drops you beside Cinder. Intro zoom is `0.34 / MAP_SCALE` (0.034): on a 1280px window Cinder and a boosted ship glyph share the first frame. Zoom floor is `0.008 / MAP_SCALE` (0.0008). The first rock wave uses `openingBand` inside the intro view (Begin sets `zoomWanted`). Later waves spawn a couple of seconds out at the current cruise, capped by the view, and never use the full world as a spawn radius.
 
 ### Verify
 
 1. `npm run build`, then `npm run preview`. Open `http://localhost:47331/?playtest=1`.
-2. Begin. No re-entry prompt on frame 1. Nav still names Cinder. Radar shows eight planet discs and Hab-7’s cyan diamond (**H**). Minimap is the whole field, not a corner.
+2. Begin. No re-entry prompt on frame 1. Nav still names Cinder. Radar shows eight planet discs, faint salvage pips, and Hab-7’s cyan diamond (**H**). Minimap is the whole field, not a corner.
 3. Console: `reentryCruise()`. `seconds` is **300**, `engines` is **5**, `longAxis` is **6400000**.
 4. `reentryWarpEdge()` parks you on the west edge already at full cruise, nose east. Hold `W`. Crossing to the east edge is about five minutes (±20%, a short accel at the start). Let go of `W` and speed should fall off in a couple of seconds.
 5. Jitter: `reentryPlace(5800000, 2400000)`, then scroll-zoom in (toward `ZOOM_MAX` 3.6) and hold `W`. The ship stays centered and solid — no shimmer, stair-step, or whole-scene wobble. The same pass near the origin (`reentryPlace(200, 2400000)`) should look identical. Nebula color should scroll, not quantize.
@@ -109,7 +109,7 @@ Nick: load felt slow and the game “restarts.” Timed against a **production**
 
 ### Human pass (preview, ~30s recorded + cavern still)
 
-Menu → Enter Begin (single start) → hold W toward Cinder → E cine ~1–2s (`RE-ENTRY` / `CINDER`, scanlines) → cavern (fuel/energy, Ember Warden lock, `LAUNCH TO SPACE — E`). Keys worked without a canvas click. Space dogfight still reads small (P1). Touch pads not exercised (`pointer: fine`).
+Menu → Enter Begin (single start) → hold W toward Cinder → E cine ~1–2s (`RE-ENTRY` / `CINDER`, scanlines) → cavern (fuel/energy, Ember Warden lock, `LAUNCH TO SPACE — E`). Keys worked without a canvas click. Space dogfight read small in this capture (P1, later fixed in #7). Touch pads were not exercised on this pass.
 
 ### Artifacts
 
@@ -142,7 +142,7 @@ Run-local, not required for a real playthrough:
 
 ## Controls (must still work)
 
-`A`/`D` turn · `W`/`S` thrust · `Space` shoot · `E` re-enter/launch/dock · `Shift` shield · `R` rescue when stranded · `Esc` pause / close shop · `M` mute
+`A`/`D` turn · `W`/`S` thrust · `Space` shoot · `E` re-enter/launch/dock · `Shift` shield · `R` rescue when stranded · `Esc` pause / close shop · `M` or the mute chip
 
 Hold `W`/`A`/`D` — tapping thrust does nothing useful. Canvas focus is grabbed on Begin — no extra click needed.
 
@@ -172,10 +172,14 @@ Visual only. Same shop rows, prices, and speeds. Own the gear at Hab-7 (or pick 
 - **Guns**: Twin, Spread, or Rapid shots leave a short `#7ee7ff` trail with an orange muzzle stroke. The stock gun stays a plain bolt.
 - **Pet**: a wingman drone keeps its green silhouette and gains a faint neon glow so it stays readable at cruise.
 
+## Checklist — salvage beacons
+
+- **Field marks**: thirty-six seeded **SCRAP** / **SIP** rings (see **Salvage beacons**). One pass pays; the chart keeps a faint pip.
+
 ## Loop checks
 
 1. **Menu → space**  
-   Begin re-entry. You spawn **near Cinder but outside** the re-entry halo — no `Re-enter Cinder — E` on frame 1. HUD shows energy bar, objective **Defeat Ember Warden**. Nav arrow + distance still point at Cinder. Zoom out: planets are sparse dots on a 6.4M × 4.8M map. Radar shows eight planet discs, hollow magenta void rings, and Hab-7’s cyan diamond (**H**). Away from a void fold the ship coasts — open space has no general gravity. The spawn cell on the minimap is lit; the rest of the chart is dark.
+   Begin re-entry. You spawn **near Cinder but outside** the re-entry halo — no `Re-enter Cinder — E` on frame 1. HUD shows energy bar, objective **Defeat Ember Warden**. Nav arrow + distance still point at Cinder. Zoom out: planets are sparse dots on a 6.4M × 4.8M map. Radar shows eight planet discs, hollow magenta void rings, faint salvage pips, and Hab-7’s cyan diamond (**H**). Away from a void fold the ship coasts — open space has no general gravity. The spawn cell on the minimap is lit; the rest of the chart is dark.
 
 2. **Gate prompt**  
    Long travel to Rime (empty space). Without a key, up close: `RIME LOCKED — need Cinder Key`. `E` must not start a dive. Same style for later worlds (`ASHEN LOCKED — need Vesper Key`, etc.).
@@ -206,7 +210,7 @@ Visual only. Same shop rows, prices, and speeds. Own the gear at Hab-7 (or pick 
 9. **Empty space / large map**  
    Map is **6400000 × 4800000**. Eight planets: Cinder → Rime → Mycel → Vesper → Ashen → Brine → Thorn → Helix (each needs the previous key). See **Large map** above for the 5-minute cruise and the jitter check.  
    - Begin: no re-entry prompt.  
-   - Zoom out (`ZOOM_MIN` 0.0008): planet pips + lots of void. Radar shows all eight plus Hab-7’s diamond.  
+   - Zoom out (`ZOOM_MIN` 0.0008): planet pips + lots of void. Radar shows all eight, hollow magenta void rings, faint salvage pips, and Hab-7’s diamond.  
    - Fly away from Cinder, clear of the magenta rings: ship coasts with **no general gravity**. HUD arrow still names Cinder + distance. A void fold is a local well only (see **Planet splash, chart, void folds**).  
    - Reach another world only after a long empty-space run. Re-entry prompt appears only in a local halo.  
    - Zoom in far from the origin: no camera wobble.
@@ -219,7 +223,7 @@ Recorded against the running Vite server on `:47331` (`?playtest=1`) while the p
 
 ### Space
 
-- Ship starts near orange **Cinder** but **outside** the local re-entry halo (`SPAWN_CLEARANCE` is 16000 from the surface now, `REENTRY_RANGE` 520). Wave rocks spawn a couple of seconds out at the current cruise, not across the whole map. At intro zoom they read as small outlines until you zoom in.
+- Ship starts near orange **Cinder** but **outside** the local re-entry halo (`SPAWN_CLEARANCE` is 16000 from the surface now, `REENTRY_RANGE` 520). Begin sets `zoomWanted` to the intro zoom, and the first wave (`openingBand`) spawns inside that view (#7). Later waves are a couple of seconds out at the current cruise, not across the whole map.
 - Re-entry callout is the HTML `#prompt` pill only. `drawNavMarker` no longer draws `{name} · E` on-planet (that used `14 / zoom` in screen space and exploded at `ZOOM_MIN`). Off-screen nav arrow + distance stay. Planet names in `drawPlanets` use a screen-pixel font cap.
 - `HULL BREACH` banner is the right death sting (no longer “RE-ENTRY”).
 - Objective **DEFEAT EMBER WARDEN** and `Rime LOCKED` are on-screen in space. Good fantasy; they compete with the planet.
@@ -227,8 +231,8 @@ Recorded against the running Vite server on `:47331` (`?playtest=1`) while the p
 ### Cinematic
 
 - 8-bit dive is the sell: chunky pixels, **RE-ENTRY / CINDER**, flames, scanlines, `PRESS E TO SKIP`.
-- Duration ~3.6s (`cinematic.ts`). `E` / `Space` / `Esc` skip — easy to clip if Space is still held from shooting. Let ~2s+ play.
-- HTML HUD (score / objective / tank chips) still composites over the cine unless `hud.hidden` for `cine` is actually applied. Later commits on this branch hide HUD during cine; verify after pull.
+- Duration ~3.6s (`cinematic.ts`). `E` / `Esc` / Enter skip. Held Space is ignored for 0.4s (`reentrySpaceGrace`, #8) so a shot from the dogfight does not clip the sell. Let ~2s+ play.
+- HTML HUD is hidden during cine (`hud.hidden` when the mode is `cine`).
 
 ### Cavern
 
@@ -239,18 +243,18 @@ Recorded against the running Vite server on `:47331` (`?playtest=1`) while the p
 
 ### Audio
 
-- SFX: thrust, shots, re-entry rumble, pickups. `M` mute is wired (`audio.ts` `toggleMuted` + `game.ts` `KeyM`).
-- No music bed. Mute has no HUD icon (banner only).
+- SFX: thrust, shots, re-entry rumble, pickups. `#mute` speaker chip and `KeyM` both call `toggleMute` (#7). `muted` persists on `reentry-save`.
+- Music bed shipped in #13: `audio.ts` loops a generated neon loop after Begin. Pause, shop, cine, and game over duck it. Mute cuts music and SFX together.
 
 ### Mobile / touch
 
-- Coarse pointer (`matchMedia("(pointer: coarse)")`, hidden on `pointer: fine`): `#pads` Turn L / Thrust / Turn R / Rev plus `#fire`. Wired to the same `keys` Set as `A/D/W/S` and `setFire`. Keyboard still works on desktop.
+- `#pads` (Turn L / Thrust / Turn R / Rev) and `#fire` are visible in play, including on a fine pointer. They share the same `keys` Set as `A/D/W/S` and `setFire`. Keyboard still works on desktop.
 - Click-to-dive a nearby planet works on mouse.
 
 ### Juice / UX
 
 - Cine + cavern scanlines + boss nav line are punchy.
-- Space combat lacks scale: ship is a few pixels unless you scroll-zoom in, at which point rocks leave frame.
+- Opening dogfight reads at Begin zoom (#7): first-wave rocks sit inside the intro view. Later waves stay a couple of seconds out, so a deep zoom still drops them off the frame.
 - Combo sits under the score cluster (`#combo` in `style.css`), clear of the centered objective pill and the mute chip. Narrow screens still park the objective at the bottom.
 - Credits bank on launch/rescue and spend at Hab-7.
 
@@ -262,31 +266,31 @@ Recorded against the running Vite server on `:47331` (`?playtest=1`) while the p
 
 ## Edits by severity
 
-Verified against this branch after the progression-loop land. Original main-branch P0 gravity / mute / death-banner / drift-keys are **done**; remaining items below.
+Verified against `c6fc229`. Original main-branch P0 gravity / mute / death-banner / drift-keys are **done**. Every row below is **Fixed**.
 
 ### P0
 
 | Issue | Hint |
 | --- | --- |
 | Duplicate / oversized re-entry callout | **Fixed.** HTML `#prompt` only. `drawNavMarker` skips the on-planet `{name} · E`. Planet labels use `worldFontPx` (screen pixels, not `14/zoom` in screen space). Off-screen arrow + distance unchanged. |
-| No touch thrust/turn | **Fixed.** `#pads` (L / Thrust / R / Rev) + `#fire` on `(pointer: coarse)` only. Pointer hold → `game.key` / `setFire`. Keyboard A/D/W/S/Space unchanged. |
+| No touch thrust/turn | **Fixed.** `#pads` (L / Thrust / R / Rev) + `#fire` are visible in play. Pointer hold → `game.key` / `setFire`. Keyboard A/D/W/S/Space unchanged. |
 
 ### P1
 
 | Issue | Hint |
 | --- | --- |
-| Space dogfight doesn’t read | **Fixed.** First wave (`wave <= 1`) uses `openingBand` so rocks spawn inside the current view. Later waves stay a couple of seconds out at cruise. |
+| Space dogfight doesn’t read | **Fixed** (#7). Begin sets `zoomWanted` to the intro zoom, and the first wave (`wave <= 1`) uses `openingBand` so rocks spawn inside that view. Later waves stay a couple of seconds out at cruise. |
 | Cine skip from held Space | **Fixed.** `beginReentry` ignores Space for 0.4s (`reentrySpaceGrace`) and drops held Space so key-repeat cannot skip the sell. E / Esc / Enter still skip immediately. |
 | Fuel scramble vs climb fantasy | **Fixed for the first Cinder dive.** Two shaft cans (`+28`) on the carved approach until the Cinder key is owned. `START_MAX_FUEL` / `FUEL_THRUST` unchanged, so later dry tanks still rescue. |
 | Combo vs objective overlap | **Fixed.** `#combo` is left-aligned under the score row (`top` clears the HUD and safe area), so it no longer shares the center column with `#objective`. The mute chip stays top-right. Below 640px the objective still drops to the bottom. |
 | No spend sink for credits | **Fixed.** Hab-7 shop spends banked credits on guns / pets / tanks / salvage / refills. |
-| Mute has no persistent control | **Fixed.** `#mute` speaker chip and `KeyM` both call `toggleMute`. `muted` persists on `reentry-save`. |
+| Mute has no persistent control | **Fixed** (#7). `#mute` speaker chip and `KeyM` both call `toggleMute`. `muted` persists on `reentry-save`. |
 
 ### P2
 
 | Issue | Hint |
 | --- | --- |
-| No music | **Fixed.** `audio.ts` loops a generated neon bed (no audio files) after Begin. Peak stays under shots and thrust. Pause, shop, cine, and game over duck it. Mute cuts music and SFX together. |
+| No music | **Fixed** (#13). `audio.ts` loops a generated neon bed (no audio files) after Begin. Peak stays under shots and thrust. Pause, shop, cine, and game over duck it. Mute cuts music and SFX together. |
 | Mobile is Fire-only | **Fixed** with P0 touch pads (L / Thrust / R / Rev + Fire). |
 | No shop for banked credits | **Fixed.** Hab-7 dock / shop overlay. |
 | Vite `base` | **Done for relative deploy:** `vite.config.ts` `base: "./"`. Root hosting still works; GitHub Pages project pages should keep `base: '/re-entry/'` or `./`. |
@@ -336,10 +340,10 @@ Also on disk (raw / parallel captures, not the punchy edit):
 
 ### Hero beat list (`ad_hero_720p.mp4` / `recording_demo.mp4`)
 
-1. **Space** — Cinder, rocks, hull-breach (dogfight is small-scale). Re-entry is the HTML pill only.
+1. **Space** — Cinder, rocks, hull-breach (dogfight is small-scale in this cut). Re-entry is the HTML pill only.
 2. **Planet approach** — edge arrow + HTML re-entry pill. No dashed nav/gravity line.
 3. **E cinematic** — chunky pixels, planet name, flames (~3.7s, not skipped immediately).
 4. **Cavern combat / fuel scramble** — Ember Warden lock, loot, Twin/Shield, fuel bar.
 5. **Launch to space** — shaft / `OPEN SPACE` return to Cinder.
 
-Gap: space shooting never fills the frame; zoom-in loses rocks. Cavern + cine carry the ad.
+Gap in this cut: space shooting never fills the frame; zoom-in loses rocks. The opening wave was later pulled into the intro view (#7). Cavern + cine carry the ad.
