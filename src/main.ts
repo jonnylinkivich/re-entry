@@ -286,26 +286,43 @@ function playingNow(): boolean {
   return game.mode === "play" || game.mode === "cine";
 }
 
+/** Remote / IME keydowns sometimes omit `code`. Map `key` so E/WASD still reach the game. */
+function eventCode(event: KeyboardEvent): string {
+  if (event.code && event.code !== "Unidentified") return event.code;
+  const key = event.key;
+  if (key === " ") return "Space";
+  if (key === "Enter" || key === "Escape") return key;
+  if (key === "Shift") return "ShiftLeft";
+  if (key.length === 1) {
+    const ch = key.toLowerCase();
+    if (ch >= "a" && ch <= "z") return `Key${ch.toUpperCase()}`;
+  }
+  return event.code;
+}
+
 window.addEventListener(
   "keydown",
   (event) => {
+    const code = eventCode(event);
     const active = document.activeElement;
     const playing = playingNow();
     const flightKey =
-      event.code === "Space" ||
-      event.code === "ArrowUp" ||
-      event.code === "ArrowDown" ||
-      event.code === "ArrowLeft" ||
-      event.code === "ArrowRight" ||
-      event.code === "KeyW" ||
-      event.code === "KeyA" ||
-      event.code === "KeyS" ||
-      event.code === "KeyD" ||
-      event.code === "KeyJ" ||
-      event.code === "KeyK";
+      code === "Space" ||
+      code === "ArrowUp" ||
+      code === "ArrowDown" ||
+      code === "ArrowLeft" ||
+      code === "ArrowRight" ||
+      code === "KeyW" ||
+      code === "KeyA" ||
+      code === "KeyS" ||
+      code === "KeyD" ||
+      code === "KeyE" ||
+      code === "Enter" ||
+      code === "KeyJ" ||
+      code === "KeyK";
     const buttonArmed =
       !playing &&
-      (event.code === "Enter" || event.code === "Space") &&
+      (code === "Enter" || code === "Space") &&
       active instanceof HTMLButtonElement &&
       !active.disabled;
     if (buttonArmed) {
@@ -313,18 +330,18 @@ window.addEventListener(
       // and the following click would start() again.
       return;
     }
-    if (event.code === "Space" || event.code === "ArrowUp" || event.code === "ArrowDown") event.preventDefault();
-    if (event.repeat && (event.code === "Enter" || event.code === "Escape" || event.code === "KeyE")) return;
+    if (code === "Space" || code === "ArrowUp" || code === "ArrowDown") event.preventDefault();
+    if (event.repeat && (code === "Enter" || code === "Escape" || code === "KeyE")) return;
     if (playing && active instanceof HTMLButtonElement) {
       active.blur();
-      if (event.code === "Space" || event.code === "Enter") event.preventDefault();
+      if (code === "Space" || code === "Enter") event.preventDefault();
     }
     if (playing && flightKey) {
       event.preventDefault();
       if (active instanceof HTMLElement && active !== surface) active.blur();
     }
     unlockAudio();
-    game.key(event.code, true);
+    game.key(code, true);
   },
   true,
 );
@@ -332,10 +349,19 @@ window.addEventListener(
 window.addEventListener(
   "keyup",
   (event) => {
-    game.key(event.code, false);
+    game.key(eventCode(event), false);
   },
   true,
 );
+
+promptEl.addEventListener("pointerdown", (event) => {
+  if (event.button !== 0) return;
+  event.preventDefault();
+  event.stopPropagation();
+  unlockAudio();
+  game.interact();
+  grabPlayFocusSoon();
+});
 
 let thrustingPointer = false;
 
@@ -386,32 +412,28 @@ function bindHold(
   onDown: () => void,
   onUp: () => void,
 ): void {
-  let held = false;
+  const ids = new Set<number>();
   const down = (event: PointerEvent) => {
     event.preventDefault();
     event.stopPropagation();
     unlockAudio();
-    held = true;
+    if (ids.size === 0) onDown();
+    ids.add(event.pointerId);
     try {
       el.setPointerCapture(event.pointerId);
     } catch {
       /* capture is optional */
     }
     el.blur();
-    onDown();
   };
-  const up = (event: Event) => {
-    if (!held) return;
-    if (event instanceof PointerEvent && event.type === "lostpointercapture" && event.buttons !== 0) {
-      return;
-    }
-    held = false;
-    onUp();
+  const up = (event: PointerEvent) => {
+    if (!ids.has(event.pointerId)) return;
+    ids.delete(event.pointerId);
+    if (ids.size === 0) onUp();
   };
   el.addEventListener("pointerdown", down);
   el.addEventListener("pointerup", up);
   el.addEventListener("pointercancel", up);
-  el.addEventListener("lostpointercapture", up);
 }
 
 bindHold(
@@ -420,21 +442,101 @@ bindHold(
   () => game.setFire(false),
 );
 
-for (const pad of padsEl.querySelectorAll<HTMLButtonElement>("[data-key]")) {
-  const code = pad.dataset.key;
-  if (!code) continue;
-  bindHold(
-    pad,
-    () => game.pad(code, true),
-    () => game.pad(code, false),
-  );
+/** One pointer on the cluster can thrust and turn (mouse cannot hold L+Thrust as two buttons). */
+const padPointers = new Map<number, { x: number; y: number }>();
+
+function codesFromPadPoint(clientX: number, clientY: number): Set<string> {
+  const cluster = padsEl.getBoundingClientRect();
+  const nx = (clientX - cluster.left) / Math.max(cluster.width, 1);
+  const ny = (clientY - cluster.top) / Math.max(cluster.height, 1);
+  const codes = new Set<string>();
+  if (nx < 0.42) codes.add("KeyA");
+  if (nx > 0.58) codes.add("KeyD");
+  if (ny < 0.48) codes.add("KeyW");
+  if (ny > 0.52) codes.add("KeyS");
+  return codes;
 }
+
+function syncPadCluster(): void {
+  const held = new Set<string>();
+  for (const point of padPointers.values()) {
+    for (const code of codesFromPadPoint(point.x, point.y)) held.add(code);
+  }
+  for (const code of PAD_CODES) game.pad(code, held.has(code));
+  for (const btn of padsEl.querySelectorAll<HTMLButtonElement>("[data-key]")) {
+    const code = btn.dataset.key;
+    btn.classList.toggle("is-held", Boolean(code && held.has(code)));
+  }
+}
+
+function setPadPoint(pointerId: number, clientX: number, clientY: number): void {
+  padPointers.set(pointerId, { x: clientX, y: clientY });
+  syncPadCluster();
+}
+
+function onPadPointerDown(event: PointerEvent): void {
+  if (event.pointerType === "mouse" && event.button !== 0) return;
+  event.preventDefault();
+  event.stopPropagation();
+  unlockAudio();
+  setPadPoint(event.pointerId, event.clientX, event.clientY);
+  try {
+    padsEl.setPointerCapture(event.pointerId);
+  } catch {
+    /* capture is optional */
+  }
+  if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+  surface.focus({ preventScroll: true });
+}
+
+function onPadPointerMove(event: PointerEvent): void {
+  if (padPointers.size === 0) return;
+  if (padPointers.has(event.pointerId)) {
+    setPadPoint(event.pointerId, event.clientX, event.clientY);
+    return;
+  }
+  // Remote desktops sometimes change pointerId between down and move.
+  if (event.pointerType === "mouse" && (event.buttons & 1) !== 0) {
+    const id = [...padPointers.keys()][0];
+    if (id != null) setPadPoint(id, event.clientX, event.clientY);
+  }
+}
+
+function onPadPointerUp(event: PointerEvent): void {
+  if (padPointers.size === 0) return;
+  if (padPointers.has(event.pointerId)) {
+    padPointers.delete(event.pointerId);
+  } else if (event.pointerType === "mouse") {
+    padPointers.clear();
+  } else {
+    return;
+  }
+  syncPadCluster();
+}
+
+function onPadMouseMove(event: MouseEvent): void {
+  if (padPointers.size === 0 || (event.buttons & 1) === 0) return;
+  const id = [...padPointers.keys()][0];
+  if (id == null) return;
+  setPadPoint(id, event.clientX, event.clientY);
+}
+
+padsEl.addEventListener("pointerdown", onPadPointerDown);
+padsEl.addEventListener("pointermove", onPadPointerMove);
+padsEl.addEventListener("pointerup", onPadPointerUp);
+padsEl.addEventListener("pointercancel", onPadPointerUp);
+window.addEventListener("pointermove", onPadPointerMove);
+window.addEventListener("pointerup", onPadPointerUp, true);
+window.addEventListener("pointercancel", onPadPointerUp, true);
+window.addEventListener("mousemove", onPadMouseMove);
 
 function releaseHolds(): void {
   thrustingPointer = false;
   game.clearPointer();
   game.setFire(false);
+  padPointers.clear();
   game.clearPads();
+  for (const btn of padsEl.querySelectorAll(".pad-btn")) btn.classList.remove("is-held");
   for (const code of PAD_CODES) game.key(code, false);
 }
 
