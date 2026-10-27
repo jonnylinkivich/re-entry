@@ -138,6 +138,25 @@ function renderHud(snapshot: HudSnapshot): void {
   syncLiveHud(snapshot);
 }
 
+/** Standalone E stays the key. Words like Re-enter and Ember are left as text. */
+function paintPrompt(el: HTMLElement, text: string): void {
+  el.replaceChildren();
+  const re = /(^|\s|—)(E)(?=$|\s|\()/g;
+  let last = 0;
+  for (const match of text.matchAll(re)) {
+    const index = match.index ?? 0;
+    const lead = match[1] ?? "";
+    if (index > last) el.append(text.slice(last, index));
+    if (lead) el.append(lead);
+    const key = document.createElement("kbd");
+    key.className = "prompt-key";
+    key.textContent = "E";
+    el.append(key);
+    last = index + match[0].length;
+  }
+  if (last < text.length) el.append(text.slice(last));
+}
+
 function syncLiveHud(snapshot: HudSnapshot): void {
   const playing = snapshot.mode === "play";
   hud.hidden = snapshot.mode === "menu" || snapshot.mode === "cine";
@@ -147,7 +166,7 @@ function syncLiveHud(snapshot: HudSnapshot): void {
   promptEl.classList.toggle("is-dock", snapshot.promptDock);
   if (snapshot.prompt !== lastPrompt) {
     lastPrompt = snapshot.prompt;
-    promptEl.textContent = snapshot.prompt;
+    paintPrompt(promptEl, snapshot.prompt);
     const arrived =
       snapshot.prompt.startsWith("Dock") ||
       snapshot.prompt.startsWith("Re-enter") ||

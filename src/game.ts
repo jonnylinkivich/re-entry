@@ -299,6 +299,8 @@ const HOLE_EXIT_SPEED = 1600;
 /** Capture edge flash, then the arrival pop. Visual only — fold routing is unchanged. */
 const FOLD_FLASH = 0.28;
 const FOLD_POP = 0.5;
+/** Rim + streak when the cine hands off into the shaft. Visual only. */
+const DIVE_FLASH = 0.36;
 /** Hull-breach shatter, then the return pop. Screen strokes, not a new particle system. */
 const HULL_FLASH = 0.44;
 const HULL_POP = 0.36;
@@ -541,6 +543,7 @@ export class Game {
   /** Screen-edge grab flash, then the arrival ring. Seconds left. */
   private foldFlash = 0;
   private foldPop = 0;
+  private diveFlash = 0;
   /** One bit per beacon. Pays once per run; the mark stays up either way. */
   private beaconSpent = new Uint8Array(BEACONS.length);
   private chart = chartFromString("");
@@ -734,6 +737,7 @@ export class Game {
     this.holeLock = 0;
     this.foldFlash = 0;
     this.foldPop = 0;
+    this.diveFlash = 0;
     this.beaconSpent.fill(0);
     this.noteVisit();
     this.applyMetaLoadout();
@@ -895,6 +899,7 @@ export class Game {
     this.shake = Math.max(0, this.shake - t * 22);
     this.foldFlash = Math.max(0, this.foldFlash - t);
     this.foldPop = Math.max(0, this.foldPop - t);
+    this.diveFlash = Math.max(0, this.diveFlash - t);
     if (this.bannerLife > 0) {
       this.bannerLife -= t;
       if (this.bannerLife <= 0) this.banner = "";
@@ -1006,6 +1011,7 @@ export class Game {
     ctx.restore();
     this.drawHoleTelegraph(ctx);
     this.drawFoldFx(ctx);
+    this.drawDiveFlash(ctx);
     this.drawHullFlashes(ctx);
     this.drawSpaceLabels(ctx);
     this.drawBanner(ctx);
@@ -1925,6 +1931,7 @@ export class Game {
     this.snapCam();
     this.notePlanet(planet.id);
     this.noteChartAt(planet.x, planet.y);
+    this.diveFlash = DIVE_FLASH;
     this.announce(planet.name.toUpperCase());
     sfxWave();
     this.markHud();
@@ -1940,6 +1947,7 @@ export class Game {
     this.zone = "space";
     this.planet = null;
     this.cavern = null;
+    this.diveFlash = 0;
     this.boss = null;
     this.zoom = SPACE_INTRO_ZOOM;
     this.zoomWanted = SPACE_INTRO_ZOOM;
@@ -3648,6 +3656,50 @@ export class Game {
     ctx.beginPath();
     ctx.ellipse(cx, cy, (rx - 16) * breathe, (ry - 16) * breathe, 0, spin * 0.6 + 0.8, spin * 0.6 + 2.1);
     ctx.stroke();
+    ctx.restore();
+  }
+
+  /** Orange rim and a falling cyan streak as the dive opens. Strokes only. */
+  private drawDiveFlash(ctx: CanvasRenderingContext2D): void {
+    if (this.diveFlash <= 0 || this.zone !== "cavern") return;
+    const a = clamp(this.diveFlash / DIVE_FLASH, 0, 1);
+    const w = this.w;
+    const h = this.h;
+    const inset = Math.max(36, Math.min(w, h) * 0.1);
+    const inner = inset + Math.max(16, Math.min(w, h) * 0.045);
+    const fall = 1 - a;
+    const head = h * (0.48 + fall * 0.78);
+    const tail = head - h * 0.5;
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.lineWidth = 8 + a * 10;
+    ctx.strokeStyle = "#ff6b3d";
+    ctx.globalAlpha = 0.4 + a * 0.55;
+    ctx.strokeRect(inset, inset, w - inset * 2, h - inset * 2);
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = "#7ee7ff";
+    ctx.globalAlpha = 0.35 + a * 0.5;
+    ctx.strokeRect(inner, inner, w - inner * 2, h - inner * 2);
+    const y0 = Math.max(0, tail);
+    const y1 = Math.min(h, head);
+    if (y1 > y0 + 2) {
+      const cx = w * 0.5;
+      ctx.globalAlpha = 0.5 + a * 0.5;
+      ctx.strokeStyle = "#7ee7ff";
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(cx - 6, y0);
+      ctx.lineTo(cx - 6, y1);
+      ctx.stroke();
+      ctx.globalAlpha = 0.55 + a * 0.45;
+      ctx.strokeStyle = "#ff6b3d";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(cx + 7, y0);
+      ctx.lineTo(cx + 7, y1);
+      ctx.stroke();
+    }
     ctx.restore();
   }
 

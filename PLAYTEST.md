@@ -9,6 +9,12 @@ Hold `W`/`A`/`D` — tapping thrust does nothing useful. After **Begin re-entry*
 - **RE-ENTRY** reads on `#000108`: near-white letters, cyan halo, orange outer glow. The word stays sharp.
 - **Begin re-entry** is the hot chip under the controls (cyan fill, orange pip, slow pulse). Click, Enter, or Space still starts. No new keys.
 
+## First-dive shaft
+
+- **Shaft walls**: open edges of the tunnel stroke cyan on the open side and orange on the rock lip (~2px each). The vertical shaft stays readable while you fly it. Carve, fuel cans, and dive physics are unchanged.
+- **Entry flash**: the re-entry cine still hands off the same way (`reentrySpaceGrace` 0.4s). The cavern opens with a short orange/cyan rim and a falling streak (~0.36s). No new sound.
+- **E prompt**: `Re-enter Cinder — E` stays on `E`. The chip is a near-opaque plate, and the key sits in its own cap so it reads over the planet.
+
 ---
 
 ## Large map
