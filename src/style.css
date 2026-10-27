@@ -59,7 +59,7 @@ body {
   display: flex;
   justify-content: space-between;
   gap: 16px;
-  padding: max(16px, env(safe-area-inset-top)) 22px 0;
+  padding: max(16px, env(safe-area-inset-top)) max(68px, calc(env(safe-area-inset-right) + 60px)) 0 22px;
 }
 
 #hud[hidden],
@@ -69,6 +69,7 @@ body {
 #objective[hidden],
 #pads[hidden],
 #fire[hidden],
+#mute[hidden],
 #meters [hidden] {
   display: none !important;
   pointer-events: none !important;
@@ -545,8 +546,57 @@ kbd {
 
 .fire-btn:active,
 .pad-btn:active,
-.pad-btn.is-held {
+.pad-btn.is-held,
+.mute-btn:active {
   background: rgba(126, 231, 255, 0.2);
+}
+
+.mute-btn {
+  pointer-events: auto;
+  position: absolute;
+  z-index: 6;
+  top: max(12px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(126, 231, 255, 0.35);
+  border-radius: 14px;
+  background: rgba(8, 12, 20, 0.7);
+  color: var(--cyan);
+  backdrop-filter: blur(10px);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.mute-btn svg {
+  width: 20px;
+  height: 20px;
+  display: block;
+}
+
+.mute-btn .icon-muted {
+  display: none;
+}
+
+.mute-btn.is-muted {
+  color: #ffb36b;
+}
+
+.mute-btn.is-muted .icon-sound {
+  display: none;
+}
+
+.mute-btn.is-muted .icon-muted {
+  display: block;
+}
+
+.mute-btn:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 3px;
 }
 
 #pads {

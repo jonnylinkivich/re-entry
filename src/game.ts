@@ -237,6 +237,8 @@ const PICKUP_LOOK: Record<LootKind, { color: string; mark: string }> = {
 };
 const ZOOM_MIN = 0.015;
 const ZOOM_MAX = 3.6;
+/** Opening view. A notch past 1× so the first rocks read as a fight, not specks. */
+const ZOOM_START = 1.28;
 /** Halo from the planet surface. `nearestPlanet` adds `radius`, so the prompt is local. */
 const REENTRY_RANGE = 520;
 /** Away-spawns must stay this far from the ship (world clamp used to drop rocks on you). */
@@ -396,8 +398,8 @@ export class Game {
   private seed = 1;
   private camX = 0;
   private camY = 0;
-  private zoom = 1;
-  private zoomWanted = 1;
+  private zoom = ZOOM_START;
+  private zoomWanted = ZOOM_START;
   private viewRight = 0;
   private viewBottom = 0;
   private loadoutCached: string[] = [];
@@ -474,11 +476,7 @@ export class Game {
       else if (this.mode === "play") this.tryTransit();
     }
     if (code === "KeyR" && this.mode === "play") this.tryRescue();
-    if (code === "KeyM") {
-      this.meta.muted = toggleMuted();
-      saveMeta(this.meta);
-      this.announce(this.meta.muted ? "MUTED" : "SOUND ON");
-    }
+    if (code === "KeyM") this.toggleMute();
     if (code === "Space") {
       if (this.mode === "cine") this.skipCine();
       else if (this.mode === "menu" || this.mode === "over") this.start();
@@ -524,6 +522,13 @@ export class Game {
 
   setFire(held: boolean): void {
     this.fireHeld = held;
+  }
+
+  /** Speaker chip and M. Persists on the save and announces the new state. */
+  toggleMute(): void {
+    this.meta.muted = toggleMuted();
+    saveMeta(this.meta);
+    this.announce(this.meta.muted ? "MUTED" : "SOUND ON");
   }
 
   pulseFire(): void {
@@ -599,9 +604,11 @@ export class Game {
     this.applyMetaLoadout();
     this.rocks = [];
     this.seed = (Math.random() * 1e9) | 0;
+    this.zoomWanted = ZOOM_START;
+    this.zoom = ZOOM_START;
     this.snapCam();
     this.spawnWave(this.wave);
-    this.clearHazardsNearShip(ROCK_CLEAR_R);
+    this.clearHazardsNearShip(this.wave <= 1 ? 70 : ROCK_CLEAR_R);
     this.announce("CINDER AHEAD");
     sfxWave();
     this.bindPlaytestHooks();
@@ -1038,7 +1045,7 @@ export class Game {
     if (!Number.isFinite(ship.vx)) ship.vx = 0;
     if (!Number.isFinite(ship.vy)) ship.vy = 0;
     if (!Number.isFinite(ship.angle)) ship.angle = -Math.PI / 2;
-    if (!Number.isFinite(this.zoomWanted) || this.zoomWanted < ZOOM_MIN) this.zoomWanted = 1;
+    if (!Number.isFinite(this.zoomWanted) || this.zoomWanted < ZOOM_MIN) this.zoomWanted = ZOOM_START;
     if (!Number.isFinite(this.zoom) || this.zoom < ZOOM_MIN) {
       this.zoom = clamp(this.zoomWanted, ZOOM_MIN, ZOOM_MAX);
     }
@@ -1103,7 +1110,7 @@ export class Game {
   }
 
   private followCam(dt: number): void {
-    if (!Number.isFinite(this.zoomWanted)) this.zoomWanted = 1;
+    if (!Number.isFinite(this.zoomWanted)) this.zoomWanted = ZOOM_START;
     this.zoom += (this.zoomWanted - this.zoom) * (1 - Math.exp(-14 * dt));
     this.zoom = clamp(this.zoom, ZOOM_MIN, ZOOM_MAX);
     if (!Number.isFinite(this.zoom) || this.zoom <= 0) this.zoom = ZOOM_MIN;
@@ -1543,8 +1550,29 @@ export class Game {
 
   private spawnWave(wave: number): void {
     const n = 5 + wave * 2;
-    for (let i = 0; i < n; i++) this.spawnRock(3, { away: true });
+    const close = wave <= 1;
+    for (let i = 0; i < n; i++) {
+      this.spawnRock(3, {
+        away: true,
+        close,
+        angle: close ? (i / n) * Math.PI * 2 : undefined,
+      });
+    }
     this.capRocks();
+  }
+
+  /**
+   * First-wave ring inside the current view. The far ring (1800–4200) sits
+   * off-screen at the opening zoom, so Begin used to look empty.
+   */
+  private openingBand(radius: number): { min: number; max: number } {
+    const half = Math.min(this.viewW(), this.viewH()) * 0.5;
+    const hull = SHIP_R + radius + 36;
+    const edge = Math.max(hull, half - radius - 20);
+    const comfort = hull + 70;
+    const min = Math.min(comfort, Math.max(hull, edge * 0.5));
+    const max = Math.min(edge, Math.max(min + 28, Math.min(edge * 0.9, comfort + 180)));
+    return { min, max: Math.max(min, max) };
   }
 
   private capRocks(): void {
@@ -1564,7 +1592,15 @@ export class Game {
 
   private spawnRock(
     size: number,
-    opts: { x?: number; y?: number; vx?: number; vy?: number; away?: boolean },
+    opts: {
+      x?: number;
+      y?: number;
+      vx?: number;
+      vy?: number;
+      away?: boolean;
+      close?: boolean;
+      angle?: number;
+    },
   ): void {
     const rand = mulberry(++this.seed);
     const radius = rockRadius(size);
@@ -1572,12 +1608,15 @@ export class Game {
     const wh = this.worldH();
     let x = opts.x ?? radius + rand() * (ww - radius * 2);
     let y = opts.y ?? radius + rand() * (wh - radius * 2);
+    const close = opts.away === true && opts.close === true;
     if (opts.away) {
       let placed = false;
-      const clear2 = ROCK_CLEAR_R * ROCK_CLEAR_R;
+      const clearR = close ? SHIP_R + radius + 16 : ROCK_CLEAR_R;
+      const clear2 = clearR * clearR;
+      const band = close ? this.openingBand(radius) : null;
       for (let attempt = 0; attempt < 16; attempt++) {
-        const ang = rand() * Math.PI * 2;
-        const dist = ROCK_CLEAR_R + rand() * 2400;
+        const ang = opts.angle != null ? opts.angle + (rand() - 0.5) * 0.5 : rand() * Math.PI * 2;
+        const dist = band ? band.min + rand() * (band.max - band.min) : ROCK_CLEAR_R + rand() * 2400;
         x = this.ship.x + Math.cos(ang) * dist;
         y = this.ship.y + Math.sin(ang) * dist;
         x = clamp(x, radius + 40, ww - radius - 40);
@@ -1597,8 +1636,12 @@ export class Game {
       return;
     }
     if (this.cavern && circleHitsSolid(this.cavern, x, y, radius)) return;
-    const speed = (22 + rand() * 34 + (4 - size) * 16) * (0.85 + this.wave * 0.04);
-    const heading = rand() * Math.PI * 2;
+    const speed = close
+      ? 26 + rand() * 40
+      : (22 + rand() * 34 + (4 - size) * 16) * (0.85 + this.wave * 0.04);
+    const heading = close
+      ? Math.atan2(this.ship.y - y, this.ship.x - x) + (rand() - 0.5) * 1.4
+      : rand() * Math.PI * 2;
     this.rocks.push({
       x,
       y,
@@ -2333,7 +2376,7 @@ export class Game {
     this.wave += 1;
     this.ship.invuln = Math.max(this.ship.invuln, 2);
     this.spawnWave(this.wave);
-    this.clearHazardsNearShip(ROCK_CLEAR_R);
+    this.clearHazardsNearShip(this.wave <= 1 ? 70 : ROCK_CLEAR_R);
     this.announce(`WAVE ${this.wave}`);
     sfxWave();
     this.markHud();

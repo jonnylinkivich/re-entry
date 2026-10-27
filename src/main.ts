@@ -28,6 +28,7 @@ const shopCreditsEl = must(document.querySelector<HTMLElement>("#shop-credits"),
 const shopListEl = must(document.querySelector<HTMLElement>("#shop-list"), "#shop-list");
 const shopHintEl = must(document.querySelector<HTMLElement>("#shop-hint"), "#shop-hint");
 const fireBtn = must(document.querySelector<HTMLButtonElement>("#fire"), "#fire");
+const muteBtn = must(document.querySelector<HTMLButtonElement>("#mute"), "#mute");
 const padsEl = must(document.querySelector<HTMLElement>("#pads"), "#pads");
 const promptEl = must(document.querySelector<HTMLElement>("#prompt"), "#prompt");
 const fuelWrap = must(document.querySelector<HTMLElement>("#fuel-wrap"), "#fuel-wrap");
@@ -67,6 +68,7 @@ function showScreen(mode: Mode | "error"): void {
   const showPads = mode === "play";
   fireBtn.hidden = !showPads;
   padsEl.hidden = !showPads;
+  muteBtn.hidden = mode === "error";
 }
 
 let hudLives = -1;
@@ -80,6 +82,7 @@ let lastEnergyW = "";
 let lastSector = "";
 let lastScore = -1;
 let lastCredits = -1;
+let lastMuted: boolean | null = null;
 
 function renderLoadout(tags: readonly string[]): void {
   const key = tags.join("|");
@@ -173,6 +176,7 @@ function syncLiveHud(snapshot: HudSnapshot): void {
     fuelBar.style.width = fuelW;
   }
   energyWrap.hidden = !playing;
+  syncMute(snapshot.muted);
   const energyPct = snapshot.maxEnergy > 0 ? (snapshot.energy / snapshot.maxEnergy) * 100 : 0;
   const energyW = `${clamp(energyPct, 0, 100)}%`;
   if (energyW !== lastEnergyW) {
@@ -221,6 +225,15 @@ function clamp(n: number, a: number, b: number): number {
   return Math.max(a, Math.min(b, n));
 }
 
+function syncMute(muted: boolean): void {
+  if (muted === lastMuted) return;
+  lastMuted = muted;
+  muteBtn.classList.toggle("is-muted", muted);
+  muteBtn.setAttribute("aria-pressed", muted ? "true" : "false");
+  muteBtn.setAttribute("aria-label", muted ? "Unmute" : "Mute");
+  muteBtn.title = muted ? "Unmute (M)" : "Mute (M)";
+}
+
 game.onHud = renderHud;
 renderHud(game.hud());
 
@@ -247,6 +260,7 @@ function grabPlayFocus(): void {
   resumeBtn.blur();
   shopLeaveBtn.blur();
   fireBtn.blur();
+  muteBtn.blur();
   for (const pad of padsEl.querySelectorAll<HTMLButtonElement>(".pad-btn")) pad.blur();
   const active = document.activeElement;
   if (active instanceof HTMLElement && active !== surface && active !== document.body) {
@@ -457,6 +471,15 @@ bindHold(
   () => game.setFire(true),
   () => game.setFire(false),
 );
+
+muteBtn.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  game.toggleMute();
+  if (!game.hud().muted) unlockAudio();
+  muteBtn.blur();
+  syncMute(game.hud().muted);
+});
 
 /**
  * One pointer on the cluster can thrust and turn (a mouse cannot hold L+Thrust
