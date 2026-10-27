@@ -4,6 +4,25 @@ Build first (`npm run build`). **Production (what players get):** `npm run previ
 
 Hold `W`/`A`/`D` — tapping thrust does nothing useful. After **Begin re-entry**, keys register without an extra canvas click (`ab18e9e` + Enter/Space no longer double-`start()`).
 
+## Overnight 2026-10-27
+
+`main` is `327702c` (smoke green through #23). Start at `http://localhost:47331/?playtest=1`. The bullets are the overnight landings. Steps stay in the checklists they name.
+
+- **6.4M map, Mk 5 ~5 min** (#9) — [Large map](#large-map). Splash, chart, and folds: [Planet splash, chart, void folds](#planet-splash-chart-void-folds).
+- **Hab-7 sections** (#10) — [Checklist — Hab-7 shop visual](#checklist--hab-7-shop-visual).
+- **Combo** (#11) — under the score, clear of the objective pill. Loop check 8.
+- **Upgrade VFX** (#12) — [Checklist — upgrade neon](#checklist--upgrade-neon).
+- **Music bed** (#13) and **mute-aware SFX** (#16) — [Checklist — mute-aware SFX](#checklist--mute-aware-sfx). `M` cuts the bed and the stings.
+- **36 salvage beacons** (#14) — [Salvage beacons](#salvage-beacons) and [Checklist — salvage beacons](#checklist--salvage-beacons).
+- **PLAYTEST sync** (#15) — [Edits by severity](#edits-by-severity) matches shipped fixes.
+- **Void telegraph** (#17) — [Checklist — void-fold telegraph](#checklist--void-fold-telegraph).
+- **Death / respawn** (#18) — [Hull breach flash](#hull-breach-flash).
+- **Title / Begin** (#19) — [Title / Begin](#title--begin).
+- **Shaft neon** (#20) — [First-dive shaft](#first-dive-shaft).
+- **Low-fuel pulse** (#21) — [Low fuel](#low-fuel). `reentryFuel(0.15)` on `?playtest=1`.
+- **Rock silhouettes** (#22) — [Space rocks](#space-rocks).
+- **Pause / chart legend** (#23) — [Pause / chart legend](#pause--chart-legend).
+
 ## Title / Begin
 
 - **RE-ENTRY** reads on `#000108`: near-white letters, cyan halo, orange outer glow. The word stays sharp.
