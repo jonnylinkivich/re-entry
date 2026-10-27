@@ -618,13 +618,6 @@ export function drawCavern(
   const r0 = Math.max(0, Math.floor(camY / t) - 1);
   const r1 = Math.min(cav.rows - 1, Math.floor((camY + viewH) / t) + 1);
   ctx.fillStyle = cav.fill;
-  // Edge strokes vanish when a tile is a couple of screen pixels; skip the path.
-  const strokeEdges = t * zoom >= 2.4;
-  if (strokeEdges) {
-    ctx.strokeStyle = cav.stroke;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-  }
   for (let r = r0; r <= r1; r++) {
     let c = c0;
     while (c <= c1) {
@@ -636,15 +629,120 @@ export function drawCavern(
       while (c <= c1 && cav.solid[r * cav.cols + c] === 1) c += 1;
       const x = start * t - originX;
       const y = r * t - originY;
-      const w = (c - start) * t;
-      ctx.fillRect(x, y, w, t);
-      if (strokeEdges && r > 0 && cav.solid[(r - 1) * cav.cols + start] === 0) {
-        ctx.moveTo(x, y + 0.5);
-        ctx.lineTo(x + w, y + 0.5);
-      }
+      ctx.fillRect(x, y, (c - start) * t, t);
     }
   }
-  if (strokeEdges) ctx.stroke();
+  // Edge strokes vanish when a tile is a couple of screen pixels; skip the path.
+  if (t * zoom >= 2.4) strokeTunnelEdges(ctx, cav, c0, c1, r0, r1, originX, originY, zoom);
+}
+
+/**
+ * Open/solid boundaries. Cyan sits in the tunnel, orange on the rock lip,
+ * both in screen pixels so the shaft still reads while you move.
+ */
+function strokeTunnelEdges(
+  ctx: CanvasRenderingContext2D,
+  cav: Cavern,
+  c0: number,
+  c1: number,
+  r0: number,
+  r1: number,
+  originX: number,
+  originY: number,
+  zoom: number,
+): void {
+  const t = cav.tile;
+  const cols = cav.cols;
+  const rows = cav.rows;
+  const solid = cav.solid;
+  const filled = (c: number, r: number): boolean => {
+    if (c < 0 || r < 0 || c >= cols || r >= rows) return true;
+    return solid[r * cols + c] === 1;
+  };
+  const px = 1 / Math.max(zoom, 0.05);
+  const gap = 2.2 * px;
+  const lip = ctx;
+  lip.beginPath();
+  const open = new Path2D();
+  const add = (intoOpen: boolean, x0: number, y0: number, x1: number, y1: number): void => {
+    const path = intoOpen ? open : lip;
+    path.moveTo(x0, y0);
+    path.lineTo(x1, y1);
+  };
+  for (let r = r0; r <= r1; r++) {
+    let c = c0;
+    while (c <= c1) {
+      if (!filled(c, r) || filled(c, r - 1)) {
+        c += 1;
+        continue;
+      }
+      const start = c;
+      c += 1;
+      while (c <= c1 && filled(c, r) && !filled(c, r - 1)) c += 1;
+      const x0 = start * t - originX;
+      const x1 = c * t - originX;
+      const y = r * t - originY;
+      add(false, x0, y, x1, y);
+      add(true, x0, y - gap, x1, y - gap);
+    }
+    c = c0;
+    while (c <= c1) {
+      if (!filled(c, r) || filled(c, r + 1)) {
+        c += 1;
+        continue;
+      }
+      const start = c;
+      c += 1;
+      while (c <= c1 && filled(c, r) && !filled(c, r + 1)) c += 1;
+      const x0 = start * t - originX;
+      const x1 = c * t - originX;
+      const y = (r + 1) * t - originY;
+      add(false, x0, y, x1, y);
+      add(true, x0, y + gap, x1, y + gap);
+    }
+  }
+  for (let c = c0; c <= c1; c++) {
+    let r = r0;
+    while (r <= r1) {
+      if (!filled(c, r) || filled(c - 1, r)) {
+        r += 1;
+        continue;
+      }
+      const start = r;
+      r += 1;
+      while (r <= r1 && filled(c, r) && !filled(c - 1, r)) r += 1;
+      const x = c * t - originX;
+      const y0 = start * t - originY;
+      const y1 = r * t - originY;
+      add(false, x, y0, x, y1);
+      add(true, x - gap, y0, x - gap, y1);
+    }
+    r = r0;
+    while (r <= r1) {
+      if (!filled(c, r) || filled(c + 1, r)) {
+        r += 1;
+        continue;
+      }
+      const start = r;
+      r += 1;
+      while (r <= r1 && filled(c, r) && !filled(c + 1, r)) r += 1;
+      const x = (c + 1) * t - originX;
+      const y0 = start * t - originY;
+      const y1 = r * t - originY;
+      add(false, x, y0, x, y1);
+      add(true, x + gap, y0, x + gap, y1);
+    }
+  }
+  ctx.save();
+  ctx.lineJoin = "miter";
+  ctx.lineCap = "butt";
+  ctx.strokeStyle = "rgba(126, 231, 255, 0.95)";
+  ctx.lineWidth = 2.5 * px;
+  ctx.stroke(open);
+  ctx.strokeStyle = "#ff6b3d";
+  ctx.lineWidth = 2.1 * px;
+  ctx.stroke();
+  ctx.restore();
 }
 
 function bossAnchor(cols: number, rows: number): { shaft: number; bossC: number; bossR: number } {
