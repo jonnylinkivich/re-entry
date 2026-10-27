@@ -139,11 +139,21 @@ function syncLiveHud(snapshot: HudSnapshot): void {
   overlay.hidden = snapshot.mode === "play" || snapshot.mode === "cine";
   const hidePrompt = !playing || snapshot.prompt.length === 0;
   if (promptEl.hidden !== hidePrompt) promptEl.hidden = hidePrompt;
+  promptEl.classList.toggle("is-dock", snapshot.promptDock);
   if (snapshot.prompt !== lastPrompt) {
     lastPrompt = snapshot.prompt;
     promptEl.textContent = snapshot.prompt;
+    const arrived =
+      snapshot.prompt.startsWith("Dock") ||
+      snapshot.prompt.startsWith("Re-enter") ||
+      snapshot.prompt.startsWith("Launch");
+    promptEl.classList.remove("is-arrive");
+    if (arrived) {
+      // Restart the flash when a dock / re-entry / launch line first appears.
+      void promptEl.offsetWidth;
+      promptEl.classList.add("is-arrive");
+    }
   }
-  promptEl.classList.toggle("is-dock", snapshot.promptDock);
   const hideObj = !playing || snapshot.objective.length === 0;
   if (objectiveEl.hidden !== hideObj) objectiveEl.hidden = hideObj;
   if (snapshot.objective !== lastObjective) {
@@ -354,6 +364,12 @@ window.addEventListener(
   true,
 );
 
+promptEl.addEventListener("animationend", (event) => {
+  if (event.animationName === "prompt-arrive" || event.animationName === "prompt-arrive-dock") {
+    promptEl.classList.remove("is-arrive");
+  }
+});
+
 promptEl.addEventListener("pointerdown", (event) => {
   if (event.button !== 0) return;
   event.preventDefault();
@@ -442,27 +458,54 @@ bindHold(
   () => game.setFire(false),
 );
 
-/** One pointer on the cluster can thrust and turn (mouse cannot hold L+Thrust as two buttons). */
+/**
+ * One pointer on the cluster can thrust and turn (a mouse cannot hold L+Thrust
+ * as two buttons). Axes are analog: a small deadzone at the cluster center,
+ * and diagonals are normalized onto the unit circle so thrust+turn is not
+ * full burn and full spin at once. Keyboard A/D/W/S never come through here.
+ *
+ * Full deflection is the labeled button center, not the rect corner.
+ * Grid is 68 / 76 / 68 with 8px gaps (228px) and two rows, so L's center sits
+ * near x=0.15 and Thrust's center near y=0.23.
+ */
+const STICK_FULL_X = Math.abs(0.149 - 0.5) * 2;
+const STICK_FULL_Y = Math.abs(0.23 - 0.5) * 2;
+const STICK_DEAD = 0.18;
+const STICK_LIT = 0.34;
+
 const padPointers = new Map<number, { x: number; y: number }>();
 
-function codesFromPadPoint(clientX: number, clientY: number): Set<string> {
+function axesFromPadPoint(clientX: number, clientY: number): { turn: number; thrust: number } {
   const cluster = padsEl.getBoundingClientRect();
   const nx = (clientX - cluster.left) / Math.max(cluster.width, 1);
   const ny = (clientY - cluster.top) / Math.max(cluster.height, 1);
-  const codes = new Set<string>();
-  if (nx < 0.42) codes.add("KeyA");
-  if (nx > 0.58) codes.add("KeyD");
-  if (ny < 0.48) codes.add("KeyW");
-  if (ny > 0.52) codes.add("KeyS");
-  return codes;
+  let x = ((nx - 0.5) * 2) / STICK_FULL_X;
+  let y = ((ny - 0.5) * 2) / STICK_FULL_Y;
+  const mag = Math.hypot(x, y);
+  if (mag < STICK_DEAD || mag === 0) return { turn: 0, thrust: 0 };
+  const scaled = Math.min(1, (mag - STICK_DEAD) / (1 - STICK_DEAD));
+  return { turn: (x / mag) * scaled, thrust: (-y / mag) * scaled };
 }
 
 function syncPadCluster(): void {
-  const held = new Set<string>();
+  let turn = 0;
+  let thrust = 0;
   for (const point of padPointers.values()) {
-    for (const code of codesFromPadPoint(point.x, point.y)) held.add(code);
+    const axis = axesFromPadPoint(point.x, point.y);
+    turn += axis.turn;
+    thrust += axis.thrust;
   }
-  for (const code of PAD_CODES) game.pad(code, held.has(code));
+  const mag = Math.hypot(turn, thrust);
+  if (mag > 1) {
+    turn /= mag;
+    thrust /= mag;
+  }
+  game.setStick(turn, thrust);
+  const held = new Set<string>();
+  if (turn < -STICK_LIT) held.add("KeyA");
+  if (turn > STICK_LIT) held.add("KeyD");
+  if (thrust > STICK_LIT) held.add("KeyW");
+  if (thrust < -STICK_LIT) held.add("KeyS");
   for (const btn of padsEl.querySelectorAll<HTMLButtonElement>("[data-key]")) {
     const code = btn.dataset.key;
     btn.classList.toggle("is-held", Boolean(code && held.has(code)));

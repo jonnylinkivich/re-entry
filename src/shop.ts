@@ -7,7 +7,8 @@ export type ShopId =
   | "cell"
   | "salvage"
   | "energy"
-  | "fuel";
+  | "fuel"
+  | "engines";
 
 export type ShopStatus = "ready" | "owned" | "broke" | "full";
 
@@ -36,6 +37,12 @@ export type ShopContext = {
   energy: number;
   tankMax: number;
   energyMax: number;
+  engines: number;
+  enginesMax: number;
+  /** Rounded space cruise at the current engines level, u/s. */
+  spaceSpeed: number;
+  /** Rounded space cruise after the next engines buy, u/s. */
+  nextSpaceSpeed: number;
 };
 
 export const SHOP_TANK_STEP = 15;
@@ -53,6 +60,7 @@ const SALVAGE_75 = 55;
 const SALVAGE_100 = 80;
 const ENERGY = 12;
 const FUEL = 8;
+const ENGINES = 45;
 
 export function purseOf(ctx: ShopContext): number {
   return ctx.credits + Math.max(0, ctx.cargo);
@@ -79,11 +87,21 @@ function row(
   return { id, name, blurb, price, status, missing, detail };
 }
 
+function enginesRow(ctx: ShopContext): ShopRow {
+  const maxed = ctx.engines >= ctx.enginesMax;
+  const level = maxed ? ctx.enginesMax : ctx.engines + 1;
+  const blurb = maxed
+    ? `Space cruise ${ctx.spaceSpeed} u/s`
+    : `Space cruise ${ctx.spaceSpeed} → ${ctx.nextSpaceSpeed} u/s`;
+  return row("engines", `Engines Mk ${level}`, blurb, ENGINES, ctx, { full: maxed });
+}
+
 export function buildShopRows(ctx: ShopContext): ShopRow[] {
   const rows: ShopRow[] = [
     row("twin", "Twin cannons", "Paired forward guns", TWIN, ctx, { owned: ctx.twin }),
     row("spread", "Spread rack", "Three-way volley", SPREAD, ctx, { owned: ctx.spread }),
     row("rapid", "Rapid feeder", "Faster fire rate", RAPID, ctx, { owned: ctx.rapid }),
+    enginesRow(ctx),
     row("pet", "Wingman drone", `Shooting pet (${ctx.pets}/${ctx.maxPets})`, PET, ctx, {
       owned: ctx.pets >= ctx.maxPets,
     }),

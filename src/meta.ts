@@ -54,6 +54,8 @@ export type MetaState = {
   twin: boolean;
   spread: boolean;
   pets: number;
+  /** Hab-7 engines level, 0..ENGINES_MAX. Raises space cruise only. */
+  engines: number;
 };
 
 export const START_MAX_FUEL = 40;
@@ -64,6 +66,8 @@ export const FUEL_IDLE = 0.6;
 export const FUEL_THRUST = 9;
 export const ENERGY_DRAIN = 11;
 export const ENERGY_HIT = 16;
+/** Hab-7 Engines row. Level 5 is the ~5 minute long-axis cruise. */
+export const ENGINES_MAX = 5;
 
 const SAVE_KEY = "reentry-save";
 const HIGH_KEY = "reentry-highscore";
@@ -83,6 +87,7 @@ const DEFAULTS: MetaState = {
   twin: false,
   spread: false,
   pets: 0,
+  engines: 0,
 };
 
 function readNumber(key: string): number {
@@ -143,6 +148,7 @@ export function normalizeMeta(partial: Partial<MetaState>): MetaState {
     twin: Boolean(partial.twin),
     spread: Boolean(partial.spread),
     pets: clamp(Math.floor(partial.pets ?? 0), 0, 2),
+    engines: clamp(Math.floor(partial.engines ?? 0) || 0, 0, ENGINES_MAX),
   };
 }
 
