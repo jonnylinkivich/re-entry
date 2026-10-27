@@ -1,3 +1,5 @@
+import { SPACE_H, SPACE_W } from "./cavern.ts";
+
 export type PlanetId =
   | "cinder"
   | "rime"
@@ -56,7 +58,17 @@ export type MetaState = {
   pets: number;
   /** Hab-7 engines level, 0..ENGINES_MAX. Raises space cruise only. */
   engines: number;
+  /** Base64 bitset of open-space chart cells the ship has crossed. */
+  visited: string;
+  /** Planet ids the player has actually entered. */
+  visitedPlanets: string[];
 };
+
+/** Open-space chart. 40×30 cells of 160000² — one cell per frame at full cruise. */
+export const CHART_COLS = 40;
+export const CHART_ROWS = 30;
+export const CHART_CELLS = CHART_COLS * CHART_ROWS;
+const CHART_BYTES = CHART_CELLS / 8;
 
 export const START_MAX_FUEL = 40;
 export const START_MAX_ENERGY = 40;
@@ -66,7 +78,7 @@ export const FUEL_IDLE = 0.6;
 export const FUEL_THRUST = 9;
 export const ENERGY_DRAIN = 11;
 export const ENERGY_HIT = 16;
-/** Hab-7 Engines row. Level 5 is the ~5 minute long-axis cruise. */
+/** Hab-7 Engines row. Level 5 crosses the 6.4M long axis in ~5 min. */
 export const ENGINES_MAX = 5;
 
 const SAVE_KEY = "reentry-save";
@@ -88,6 +100,8 @@ const DEFAULTS: MetaState = {
   spread: false,
   pets: 0,
   engines: 0,
+  visited: "",
+  visitedPlanets: [],
 };
 
 function readNumber(key: string): number {
@@ -149,7 +163,75 @@ export function normalizeMeta(partial: Partial<MetaState>): MetaState {
     spread: Boolean(partial.spread),
     pets: clamp(Math.floor(partial.pets ?? 0), 0, 2),
     engines: clamp(Math.floor(partial.engines ?? 0) || 0, 0, ENGINES_MAX),
+    visited: normalizeVisited(partial.visited),
+    visitedPlanets: normalizeVisitedPlanets(partial.visitedPlanets),
   };
+}
+
+export function emptyChart(): Uint8Array {
+  return new Uint8Array(CHART_BYTES);
+}
+
+export function chartFromString(raw: string): Uint8Array {
+  const out = emptyChart();
+  if (!raw) return out;
+  try {
+    const bin = atob(raw);
+    const n = Math.min(bin.length, CHART_BYTES);
+    for (let i = 0; i < n; i++) out[i] = bin.charCodeAt(i) & 255;
+  } catch {
+    /* bad save — treat as uncharted */
+  }
+  return out;
+}
+
+export function chartToString(bits: Uint8Array): string {
+  let any = false;
+  let s = "";
+  for (let i = 0; i < CHART_BYTES; i++) {
+    const b = bits[i] ?? 0;
+    if (b) any = true;
+    s += String.fromCharCode(b);
+  }
+  return any ? btoa(s) : "";
+}
+
+export function chartIndex(x: number, y: number): number {
+  const col = clamp(Math.floor((x / SPACE_W) * CHART_COLS), 0, CHART_COLS - 1);
+  const row = clamp(Math.floor((y / SPACE_H) * CHART_ROWS), 0, CHART_ROWS - 1);
+  return row * CHART_COLS + col;
+}
+
+/** Returns true when the cell flips from unvisited to visited. */
+export function markChart(bits: Uint8Array, index: number): boolean {
+  if (index < 0 || index >= CHART_CELLS) return false;
+  const byte = index >> 3;
+  const mask = 1 << (index & 7);
+  const cur = bits[byte] ?? 0;
+  if ((cur & mask) !== 0) return false;
+  bits[byte] = cur | mask;
+  return true;
+}
+
+export function chartCellLit(bits: Uint8Array, index: number): boolean {
+  if (index < 0 || index >= CHART_CELLS) return false;
+  const cur = bits[index >> 3] ?? 0;
+  return (cur & (1 << (index & 7))) !== 0;
+}
+
+function normalizeVisited(raw: unknown): string {
+  if (typeof raw !== "string" || raw.length === 0) return "";
+  return chartToString(chartFromString(raw));
+}
+
+function normalizeVisitedPlanets(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const allow = new Set<string>(ALL_PLANET_KEYS);
+  const out: string[] = [];
+  for (const id of raw) {
+    if (typeof id === "string" && allow.has(id) && !out.includes(id)) out.push(id);
+  }
+  return out;
 }
 
 export function planetUnlocked(id: string, keys: readonly string[]): boolean {

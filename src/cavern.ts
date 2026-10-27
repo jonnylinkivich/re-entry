@@ -52,16 +52,26 @@ export type PlanetDef = {
 };
 
 /**
- * Vanilla field was 32000 × 24000. Nick asked 200× larger.
- * Linear 200× (6.4M × 4.8M) jitters under canvas float32 at ZOOM_MAX.
- * 20× per axis = 640000 × 480000 is 400× area (above the 200×-area floor)
- * and stays stable for camera / minimap / zoom.
+ * Vanilla field was 32000 × 24000. Linear 200× is 6.4M × 4.8M.
+ * The previous build stopped at 20× (640k × 480k) because a camera
+ * translation that large jitters in canvas float32. Rendering is now
+ * camera-local (float64 subtract, then a zoom-only transform), so the
+ * full 200× field is safe. MAP_SCALE 10 is that step up from 640k × 480k.
+ * Planet and Hab-7 coordinates below are the 640k chart times MAP_SCALE,
+ * so hops stay the same fraction of the map.
  */
-export const SPACE_W = 640000;
-export const SPACE_H = 480000;
+export const MAP_SCALE = 10;
+export const SPACE_W = 640_000 * MAP_SCALE;
+export const SPACE_H = 480_000 * MAP_SCALE;
 
-/** Distance from a planet's surface to the opening spawn (outside the re-entry halo). */
-export const SPAWN_CLEARANCE = 2200;
+/**
+ * Gap from a planet's surface to the opening spawn.
+ * Not scaled with the map: this stays a local hop outside the re-entry halo
+ * (halo is radius + 520). 16000 is about 1.8s of *base* cruise (40% of
+ * SPACE_W / 300), close to the old 2200px at 880 u/s, so Begin still
+ * puts you beside Cinder instead of in the void.
+ */
+export const SPAWN_CLEARANCE = 16000;
 
 export type StationDef = {
   id: string;
@@ -75,19 +85,81 @@ export type StationDef = {
 export const STATION: StationDef = {
   id: "hab7",
   name: "Hab-7",
-  x: 126000,
-  y: 216000,
+  x: 126000 * MAP_SCALE,
+  y: 216000 * MAP_SCALE,
   radius: 96,
 };
 
 export const DOCK_RANGE = 420;
 
+export type HoleDef = {
+  id: number;
+  x: number;
+  y: number;
+};
+
+const HOLE_ANCHORS: ReadonlyArray<readonly [number, number]> = [
+  [0.18, 0.22],
+  [0.42, 0.16],
+  [0.64, 0.3],
+  [0.84, 0.18],
+  [0.2, 0.76],
+  [0.46, 0.7],
+  [0.66, 0.84],
+  [0.86, 0.68],
+];
+
+function buildHoles(): HoleDef[] {
+  const rand = mulberry(4242);
+  const holes: HoleDef[] = [];
+  const planetClear = 140_000;
+  const stationClear = 80_000;
+  const holeClear = 700_000;
+  for (const [ax, ay] of HOLE_ANCHORS) {
+    let x = (ax + (rand() - 0.5) * 0.06) * SPACE_W;
+    let y = (ay + (rand() - 0.5) * 0.06) * SPACE_H;
+    for (let n = 0; n < 24; n++) {
+      let bad = false;
+      for (const planet of PLANETS) {
+        const d = Math.hypot(x - planet.x, y - planet.y);
+        if (d < planetClear) {
+          const push = d > 1 ? planetClear / d : planetClear;
+          x = planet.x + (x - planet.x) * push;
+          y = planet.y + (y - planet.y) * push;
+          bad = true;
+        }
+      }
+      const sd = Math.hypot(x - STATION.x, y - STATION.y);
+      if (sd < stationClear) {
+        const push = sd > 1 ? stationClear / sd : stationClear;
+        x = STATION.x + (x - STATION.x) * push;
+        y = STATION.y + (y - STATION.y) * push;
+        bad = true;
+      }
+      for (const hole of holes) {
+        const d = Math.hypot(x - hole.x, y - hole.y);
+        if (d < holeClear) {
+          const push = d > 1 ? holeClear / d : holeClear;
+          x = hole.x + (x - hole.x) * push;
+          y = hole.y + (y - hole.y) * push;
+          bad = true;
+        }
+      }
+      x = clamp(x, SPACE_W * 0.08, SPACE_W * 0.92);
+      y = clamp(y, SPACE_H * 0.08, SPACE_H * 0.92);
+      if (!bad) break;
+    }
+    holes.push({ id: holes.length, x, y });
+  }
+  return holes;
+}
+
 export const PLANETS: PlanetDef[] = [
   {
     id: "cinder",
     name: "Cinder",
-    x: 110000,
-    y: 230000,
+    x: 110000 * MAP_SCALE,
+    y: 230000 * MAP_SCALE,
     radius: 240,
     color: "#ff6b3d",
     atmosphere: "rgba(255, 90, 40, 0.18)",
@@ -107,8 +179,8 @@ export const PLANETS: PlanetDef[] = [
   {
     id: "rime",
     name: "Rime",
-    x: 310000,
-    y: 60000,
+    x: 310000 * MAP_SCALE,
+    y: 60000 * MAP_SCALE,
     radius: 280,
     color: "#9ad8ff",
     atmosphere: "rgba(140, 210, 255, 0.16)",
@@ -128,8 +200,8 @@ export const PLANETS: PlanetDef[] = [
   {
     id: "mycel",
     name: "Mycel",
-    x: 70000,
-    y: 420000,
+    x: 70000 * MAP_SCALE,
+    y: 420000 * MAP_SCALE,
     radius: 250,
     color: "#6fce7a",
     atmosphere: "rgba(90, 200, 110, 0.16)",
@@ -149,8 +221,8 @@ export const PLANETS: PlanetDef[] = [
   {
     id: "vesper",
     name: "Vesper",
-    x: 510000,
-    y: 80000,
+    x: 510000 * MAP_SCALE,
+    y: 80000 * MAP_SCALE,
     radius: 300,
     color: "#c9a6ff",
     atmosphere: "rgba(180, 120, 255, 0.16)",
@@ -170,8 +242,8 @@ export const PLANETS: PlanetDef[] = [
   {
     id: "ashen",
     name: "Ashen",
-    x: 240000,
-    y: 360000,
+    x: 240000 * MAP_SCALE,
+    y: 360000 * MAP_SCALE,
     radius: 260,
     color: "#ff8a4d",
     atmosphere: "rgba(255, 120, 50, 0.16)",
@@ -191,8 +263,8 @@ export const PLANETS: PlanetDef[] = [
   {
     id: "brine",
     name: "Brine",
-    x: 580000,
-    y: 250000,
+    x: 580000 * MAP_SCALE,
+    y: 250000 * MAP_SCALE,
     radius: 290,
     color: "#3ec8c8",
     atmosphere: "rgba(50, 210, 210, 0.16)",
@@ -212,8 +284,8 @@ export const PLANETS: PlanetDef[] = [
   {
     id: "thorn",
     name: "Thorn",
-    x: 370000,
-    y: 440000,
+    x: 370000 * MAP_SCALE,
+    y: 440000 * MAP_SCALE,
     radius: 255,
     color: "#c6e04a",
     atmosphere: "rgba(190, 220, 60, 0.15)",
@@ -233,8 +305,8 @@ export const PLANETS: PlanetDef[] = [
   {
     id: "helix",
     name: "Helix",
-    x: 550000,
-    y: 410000,
+    x: 550000 * MAP_SCALE,
+    y: 410000 * MAP_SCALE,
     radius: 310,
     color: "#ff5ec8",
     atmosphere: "rgba(255, 80, 200, 0.16)",
@@ -252,6 +324,13 @@ export const PLANETS: PlanetDef[] = [
     fuel: 10,
   },
 ];
+
+/**
+ * Eight seeded void folds. Anchors sit in the open field; a short nudge
+ * keeps each one clear of planet solids, Hab-7, and the other folds.
+ * Separation stays on the order of a long hop so they read as landmarks.
+ */
+export const HOLES: HoleDef[] = buildHoles();
 
 export function generateCavern(planet: PlanetDef): Cavern {
   const { cols, rows, tile } = planet;
@@ -436,9 +515,12 @@ export function drawCavern(
   viewW: number,
   viewH: number,
   zoom = 1,
+  originX = 0,
+  originY = 0,
 ): void {
   ctx.fillStyle = cav.deep;
-  ctx.fillRect(camX, camY, viewW, viewH);
+  // Background is in camera-local space, same as the tiles below.
+  ctx.fillRect(camX - originX - 4, camY - originY - 4, viewW + 8, viewH + 8);
   const t = cav.tile;
   const c0 = Math.max(0, Math.floor(camX / t) - 1);
   const c1 = Math.min(cav.cols - 1, Math.floor((camX + viewW) / t) + 1);
@@ -461,8 +543,8 @@ export function drawCavern(
       }
       const start = c;
       while (c <= c1 && cav.solid[r * cav.cols + c] === 1) c += 1;
-      const x = start * t;
-      const y = r * t;
+      const x = start * t - originX;
+      const y = r * t - originY;
       const w = (c - start) * t;
       ctx.fillRect(x, y, w, t);
       if (strokeEdges && r > 0 && cav.solid[(r - 1) * cav.cols + start] === 0) {

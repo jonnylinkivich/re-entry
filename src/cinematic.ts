@@ -210,6 +210,98 @@ export class ReentryCine {
   }
 }
 
+const SPLASH_DURATION = 1.25;
+
+/** Branded name card before the dive. Auto-finishes; skippable. */
+export class PlanetSplash {
+  done = false;
+  private time = 0;
+  private buf: HTMLCanvasElement;
+  private gfx: CanvasRenderingContext2D;
+  private planet: PlanetDef;
+  private stars: { x: number; y: number; s: number }[] = [];
+
+  constructor(planet: PlanetDef) {
+    this.planet = planet;
+    this.buf = document.createElement("canvas");
+    this.buf.width = PW;
+    this.buf.height = PH;
+    const gfx = this.buf.getContext("2d");
+    if (!gfx) throw new Error("RE-ENTRY splash failed to allocate a buffer.");
+    this.gfx = gfx;
+    for (let i = 0; i < 36; i++) {
+      this.stars.push({
+        x: Math.random() * PW,
+        y: Math.random() * PH,
+        s: Math.random() < 0.18 ? 2 : 1,
+      });
+    }
+  }
+
+  skip(): void {
+    this.done = true;
+  }
+
+  update(dt: number): void {
+    this.time += dt;
+    if (this.time >= SPLASH_DURATION) this.done = true;
+  }
+
+  draw(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+    this.render();
+    ctx.fillStyle = "#000108";
+    ctx.fillRect(0, 0, w, h);
+    const scale = Math.max(1, Math.floor(Math.min(w / PW, h / PH)));
+    const dw = PW * scale;
+    const dh = PH * scale;
+    const ox = Math.floor((w - dw) / 2);
+    const oy = Math.floor((h - dh) / 2);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(this.buf, 0, 0, PW, PH, ox, oy, dw, dh);
+    ctx.imageSmoothingEnabled = true;
+  }
+
+  private render(): void {
+    const g = this.gfx;
+    const t = this.time;
+    const planet = this.planet;
+    g.fillStyle = "#000108";
+    g.fillRect(0, 0, PW, PH);
+
+    g.fillStyle = "#eef3ff";
+    for (const star of this.stars) {
+      const y = (star.y + t * 10) % PH;
+      g.fillRect(star.x | 0, y | 0, star.s, star.s);
+    }
+
+    g.fillStyle = hexAlpha(planet.color, 0.18);
+    g.beginPath();
+    g.arc(80, 36, 26 + t * 4, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = planet.color;
+    g.beginPath();
+    g.arc(80, 36, 14, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = "rgba(255,255,255,0.28)";
+    g.beginPath();
+    g.arc(75, 31, 4, 0, Math.PI * 2);
+    g.fill();
+
+    for (let y = 0; y < PH; y += 2) {
+      g.fillStyle = "rgba(0,0,0,0.28)";
+      g.fillRect(0, y, PW, 1);
+    }
+
+    g.fillStyle = "#7ee7ff";
+    blitText(g, "RE-ENTRY", 64, 4, 1);
+    const name = planet.name.toUpperCase();
+    g.fillStyle = planet.color;
+    blitText(g, name, (PW - name.length * 8) / 2, 56, 2);
+    g.fillStyle = "#9aa3b8";
+    blitText(g, "E  SPACE  CLICK", 52, 80, 1);
+  }
+}
+
 export class RescueCine {
   done = false;
   private time = 0;

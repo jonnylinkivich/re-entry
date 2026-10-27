@@ -236,12 +236,12 @@ export class PlanetBoss {
     list.length = w;
   }
 
-  draw(ctx: CanvasRenderingContext2D, zoom: number): void {
+  draw(ctx: CanvasRenderingContext2D, zoom: number, ox = 0, oy = 0): void {
     if (!this.alive) return;
     for (const shot of this.shots) {
       ctx.fillStyle = shot.color;
       ctx.beginPath();
-      ctx.arc(shot.x, shot.y, shot.radius, 0, Math.PI * 2);
+      ctx.arc(shot.x - ox, shot.y - oy, shot.radius, 0, Math.PI * 2);
       ctx.fill();
     }
 
@@ -250,13 +250,13 @@ export class PlanetBoss {
       ctx.strokeStyle = "rgba(154, 216, 255, 0.7)";
       ctx.lineWidth = Math.max(2, 4 / zoom);
       ctx.beginPath();
-      ctx.arc(this.x, this.y, this.ring, 0, Math.PI * 2);
+      ctx.arc(this.x - ox, this.y - oy, this.ring, 0, Math.PI * 2);
       ctx.stroke();
       ctx.restore();
     }
 
     ctx.save();
-    ctx.translate(this.x, this.y);
+    ctx.translate(this.x - ox, this.y - oy);
     const pulse = 1 + Math.sin(this.t * 4) * 0.04;
     ctx.scale(pulse, pulse);
     ctx.fillStyle = this.flash > 0 ? "#fff6e8" : "#0b0c10";
@@ -268,9 +268,9 @@ export class PlanetBoss {
     const barW = 56;
     const ratio = this.hp / this.maxHp;
     ctx.fillStyle = "rgba(8, 10, 16, 0.75)";
-    ctx.fillRect(this.x - barW / 2, this.y - this.def.radius - 16, barW, 5);
+    ctx.fillRect(this.x - ox - barW / 2, this.y - oy - this.def.radius - 16, barW, 5);
     ctx.fillStyle = this.def.color;
-    ctx.fillRect(this.x - barW / 2, this.y - this.def.radius - 16, barW * ratio, 5);
+    ctx.fillRect(this.x - ox - barW / 2, this.y - oy - this.def.radius - 16, barW * ratio, 5);
   }
 
   private drawBody(ctx: CanvasRenderingContext2D): void {
