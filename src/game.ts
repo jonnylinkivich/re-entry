@@ -328,6 +328,7 @@ const REENTRY_SPACE_GRACE = 0.4;
  */
 const CINDER_SHAFT_FUEL = 28;
 const CINDER_SHAFT_AT = [0.2, 0.78];
+/** Cavern rocks keep this palette. Open space uses cyan / orange below. */
 const ROCK_STROKES = [
   "#7ee7ff",
   "#ffb36b",
@@ -339,6 +340,16 @@ const ROCK_STROKES = [
   "#9ad8ff",
   "#ff8a4d",
   "#b8ff6a",
+];
+/**
+ * Space-rock outlines, as radius scales at equal angles.
+ * Spike, splinter, and kite — far enough apart to read at the intro boost.
+ * Draw-only: the hit circle is still `rock.radius`.
+ */
+const ROCK_SILHOUETTES: readonly (readonly number[])[] = [
+  [1.06, 0.26, 1.02, 0.22, 1.08, 0.28, 1.0, 0.2],
+  [1.14, 0.18, 0.16, 1.08, 0.18, 0.14],
+  [1.02, 0.72, 0.96, 0.66],
 ];
 
 function clamp(n: number, a: number, b: number): number {
@@ -440,6 +451,22 @@ function makeVerts(seed: number): number[] {
   const verts: number[] = [];
   for (let i = 0; i < n; i++) verts.push(0.64 + rand() * 0.46);
   return verts;
+}
+
+/**
+ * Seeded space outline. Consecutive spawn seeds cycle the three families so
+ * the opening wave cannot be one blob. Jitter and stroke come from a side
+ * stream and do not touch placement RNG.
+ */
+function rockSilhouette(seed: number): { verts: number[]; stroke: string } {
+  const rand = mulberry(seed ^ 0x51e0d);
+  const shape = (seed >>> 0) % ROCK_SILHOUETTES.length;
+  const template = ROCK_SILHOUETTES[shape] ?? ROCK_SILHOUETTES[0];
+  const verts: number[] = [];
+  for (let i = 0; i < template.length; i++) {
+    verts.push((template[i] ?? 1) * (0.94 + rand() * 0.1));
+  }
+  return { verts, stroke: rand() < 0.5 ? "#7ee7ff" : "#ff6b3d" };
 }
 
 function bounce(
@@ -2250,8 +2277,12 @@ export class Game {
       size,
       rot: rand() * Math.PI * 2,
       spin: (rand() - 0.5) * 1.2,
-      verts: makeVerts(this.seed),
-      stroke: ROCK_STROKES[Math.floor(rand() * ROCK_STROKES.length)] ?? "#7ee7ff",
+      ...(this.zone === "space"
+        ? rockSilhouette(this.seed)
+        : {
+            verts: makeVerts(this.seed),
+            stroke: ROCK_STROKES[Math.floor(rand() * ROCK_STROKES.length)] ?? "#7ee7ff",
+          }),
     });
   }
 
@@ -3241,8 +3272,9 @@ export class Game {
       else ctx.lineTo(x, y);
     }
     ctx.closePath();
-    ctx.fillStyle = this.cavern ? "#0a0c10" : "#07080c";
+    ctx.fillStyle = this.cavern ? "#0a0c10" : "#000108";
     ctx.fill();
+    if (!this.cavern) ctx.lineJoin = "round";
     ctx.lineWidth = Math.max(1.15, 2.15 / this.zoom) / boost;
     ctx.strokeStyle = rock.stroke;
     ctx.stroke();
