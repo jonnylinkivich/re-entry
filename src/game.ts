@@ -3898,21 +3898,88 @@ export class Game {
   private drawPauseChart(ctx: CanvasRenderingContext2D): void {
     const mw = Math.min(320, Math.max(200, this.w * 0.36));
     const mh = mw * 0.75;
+    const legendH = 22;
     const x = 16;
-    const y = this.h - mh - 16;
+    const y = this.h - mh - 16 - legendH;
     if (y < 64) return;
+    const plateX = x - 8;
+    const plateY = y - 22;
+    const plateW = mw + 16;
+    const plateH = mh + 32 + legendH;
     ctx.save();
-    ctx.fillStyle = "rgba(6, 8, 14, 0.88)";
-    ctx.strokeStyle = "rgba(126, 231, 255, 0.45)";
+    ctx.fillStyle = "#000108";
+    ctx.fillRect(plateX, plateY, plateW, plateH);
+    ctx.strokeStyle = "rgba(126, 231, 255, 0.62)";
     ctx.lineWidth = 1;
-    ctx.fillRect(x - 8, y - 22, mw + 16, mh + 32);
-    ctx.strokeRect(x - 8, y - 22, mw + 16, mh + 32);
+    ctx.strokeRect(plateX, plateY, plateW, plateH);
+    ctx.strokeStyle = "rgba(255, 107, 61, 0.8)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(plateX + 16, plateY);
+    ctx.lineTo(plateX, plateY);
+    ctx.lineTo(plateX, plateY + 16);
+    ctx.moveTo(plateX + plateW - 16, plateY + plateH);
+    ctx.lineTo(plateX + plateW, plateY + plateH);
+    ctx.lineTo(plateX + plateW, plateY + plateH - 16);
+    ctx.stroke();
     ctx.fillStyle = "#7ee7ff";
     ctx.font = "700 11px sans-serif";
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
     ctx.fillText("CHARTED", x, y - 16);
     this.paintSpaceChart(ctx, x, y, mw, mh, true);
+    ctx.strokeStyle = "rgba(126, 231, 255, 0.28)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, y + mh + 3);
+    ctx.lineTo(x + mw, y + mh + 3);
+    ctx.stroke();
+    this.drawChartLegend(ctx, x, y + mh + 12, mw);
+    ctx.restore();
+  }
+
+  /** Key for the Esc chart. Same colors as the pips; no chart math. */
+  private drawChartLegend(ctx: CanvasRenderingContext2D, x: number, y: number, mw: number): void {
+    const items: { label: string; ink: string; mark: "square" | "ring" }[] = [
+      { label: "SCRAP", ink: "#ff6b3d", mark: "square" },
+      { label: "SIP", ink: "#7ee7ff", mark: "square" },
+      { label: "VOID-FOLD", ink: "#c77dff", mark: "ring" },
+    ];
+    ctx.save();
+    ctx.globalAlpha = 1;
+    ctx.font = "700 10px sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    const glyph = 8;
+    const gap = 4;
+    const widths = items.map((item) => glyph + gap + ctx.measureText(item.label).width);
+    const used = widths.reduce((sum, w) => sum + w, 0);
+    const between = items.length > 1 ? Math.max(6, (mw - used) / (items.length - 1)) : 0;
+    let cursor = x;
+    items.forEach((item, i) => {
+      const gx = cursor + 3;
+      if (item.mark === "square") {
+        ctx.fillStyle = item.ink;
+        ctx.fillRect(cursor, y - 3, 6, 6);
+      } else {
+        ctx.strokeStyle = item.ink;
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.arc(gx, y, 4, 0.5, 0.5 + Math.PI * 1.45);
+        ctx.stroke();
+        ctx.strokeStyle = "#7ee7ff";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(gx - 2.2, y);
+        ctx.lineTo(gx + 2.2, y);
+        ctx.moveTo(gx, y - 2.2);
+        ctx.lineTo(gx, y + 2.2);
+        ctx.stroke();
+      }
+      ctx.fillStyle = item.ink;
+      ctx.fillText(item.label, cursor + glyph + gap, y);
+      cursor += widths[i]! + between;
+    });
     ctx.restore();
   }
 
@@ -4003,9 +4070,20 @@ export class Game {
     const vw = Math.max(4, this.viewW() * sx);
     const vh = Math.max(3, this.viewH() * sy);
     ctx.strokeRect(x + this.camX * sx, y + this.camY * sy, vw, vh);
+    const shipX = x + this.ship.x * sx;
+    const shipY = y + this.ship.y * sy;
+    if (labeled) {
+      ctx.globalAlpha = 0.4;
+      ctx.strokeStyle = "#7ee7ff";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(shipX, shipY, 8, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
     ctx.fillStyle = "#7ee7ff";
     ctx.beginPath();
-    ctx.arc(x + this.ship.x * sx, y + this.ship.y * sy, labeled ? 4 : 3, 0, Math.PI * 2);
+    ctx.arc(shipX, shipY, labeled ? 4 : 3, 0, Math.PI * 2);
     ctx.fill();
     const nav = this.closestPoi();
     ctx.strokeStyle = nav.color;
