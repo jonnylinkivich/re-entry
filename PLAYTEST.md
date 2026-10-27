@@ -23,6 +23,13 @@ Burn rates are unchanged (idle ~0.6/s, thrust ~9/s). The cavern fuel chip is the
 - **Critical flash**: at 8% and at empty the same chip flashes harder (`reentryFuel(0.08)`, `reentryFuel(0)`). Thrust still dies at 0, the stranded line still offers `R`, and a hit at empty still rescue-beams.
 - **Mute**: `M` or the mute chip silences that blip. The pulse and the flash stay on screen.
 
+## Space rocks
+
+Draw-only. Drift, splits, hit circles, and damage stay as they are. Each space rock is one of three seeded outlines on `#000108`, stroked cyan `#7ee7ff` or orange `#ff6b3d`.
+
+- **First wave**: Begin. The opening rocks are not one repeated blob — a spike, a splinter, and a kite show up in that wave.
+- **Combat**: shooting, ramming, and the break into smaller rocks feel the same. Wave size is unchanged.
+
 ---
 
 ## Large map
