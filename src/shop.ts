@@ -12,8 +12,19 @@ export type ShopId =
 
 export type ShopStatus = "ready" | "owned" | "broke" | "full";
 
+/** Display groups only. Prices and buy rules stay on the row id. */
+export type ShopSection = "weapons" | "engines" | "hull" | "consumables";
+
+export const SHOP_SECTIONS: readonly { id: ShopSection; label: string }[] = [
+  { id: "weapons", label: "Weapons" },
+  { id: "engines", label: "Engines" },
+  { id: "hull", label: "Hull" },
+  { id: "consumables", label: "Consumables" },
+];
+
 export type ShopRow = {
   id: ShopId;
+  section: ShopSection;
   name: string;
   blurb: string;
   price: number;
@@ -68,6 +79,7 @@ export function purseOf(ctx: ShopContext): number {
 
 function row(
   id: ShopId,
+  section: ShopSection,
   name: string,
   blurb: string,
   price: number,
@@ -84,7 +96,7 @@ function row(
   if (status === "owned") detail = "Owned";
   else if (status === "full") detail = "Maxed";
   else if (status === "broke") detail = `Need ${missing} more CR`;
-  return { id, name, blurb, price, status, missing, detail };
+  return { id, section, name, blurb, price, status, missing, detail };
 }
 
 function enginesRow(ctx: ShopContext): ShopRow {
@@ -93,37 +105,37 @@ function enginesRow(ctx: ShopContext): ShopRow {
   const blurb = maxed
     ? `Space cruise ${ctx.spaceSpeed} u/s`
     : `Space cruise ${ctx.spaceSpeed} → ${ctx.nextSpaceSpeed} u/s`;
-  return row("engines", `Engines Mk ${level}`, blurb, ENGINES, ctx, { full: maxed });
+  return row("engines", "engines", `Engines Mk ${level}`, blurb, ENGINES, ctx, { full: maxed });
 }
 
 export function buildShopRows(ctx: ShopContext): ShopRow[] {
   const rows: ShopRow[] = [
-    row("twin", "Twin cannons", "Paired forward guns", TWIN, ctx, { owned: ctx.twin }),
-    row("spread", "Spread rack", "Three-way volley", SPREAD, ctx, { owned: ctx.spread }),
-    row("rapid", "Rapid feeder", "Faster fire rate", RAPID, ctx, { owned: ctx.rapid }),
-    enginesRow(ctx),
-    row("pet", "Wingman drone", `Shooting pet (${ctx.pets}/${ctx.maxPets})`, PET, ctx, {
+    row("twin", "weapons", "Twin cannons", "Paired forward guns", TWIN, ctx, { owned: ctx.twin }),
+    row("spread", "weapons", "Spread rack", "Three-way volley", SPREAD, ctx, { owned: ctx.spread }),
+    row("rapid", "weapons", "Rapid feeder", "Faster fire rate", RAPID, ctx, { owned: ctx.rapid }),
+    row("pet", "weapons", "Wingman drone", `Shooting pet (${ctx.pets}/${ctx.maxPets})`, PET, ctx, {
       owned: ctx.pets >= ctx.maxPets,
     }),
-    row("tank", `Fuel tank +${SHOP_TANK_STEP}`, `Max fuel ${ctx.maxFuel} → ${ctx.maxFuel + SHOP_TANK_STEP}`, TANK, ctx, {
+    enginesRow(ctx),
+    row("tank", "hull", `Fuel tank +${SHOP_TANK_STEP}`, `Max fuel ${ctx.maxFuel} → ${ctx.maxFuel + SHOP_TANK_STEP}`, TANK, ctx, {
       full: ctx.maxFuel >= SHOP_TANK_CAP,
     }),
-    row("cell", `Energy cell +${SHOP_CELL_STEP}`, `Max energy ${ctx.maxEnergy} → ${ctx.maxEnergy + SHOP_CELL_STEP}`, CELL, ctx, {
+    row("cell", "hull", `Energy cell +${SHOP_CELL_STEP}`, `Max energy ${ctx.maxEnergy} → ${ctx.maxEnergy + SHOP_CELL_STEP}`, CELL, ctx, {
       full: ctx.maxEnergy >= SHOP_CELL_CAP,
     }),
   ];
 
   if (ctx.salvageRate < 0.75) {
-    rows.push(row("salvage", "Salvage beacon 75%", "Rescue banks 75% of cargo", SALVAGE_75, ctx, {}));
+    rows.push(row("salvage", "hull", "Salvage beacon 75%", "Rescue banks 75% of cargo", SALVAGE_75, ctx, {}));
   } else if (ctx.salvageRate < 1) {
-    rows.push(row("salvage", "Salvage beacon 100%", "Rescue banks all cargo", SALVAGE_100, ctx, {}));
+    rows.push(row("salvage", "hull", "Salvage beacon 100%", "Rescue banks all cargo", SALVAGE_100, ctx, {}));
   } else {
-    rows.push(row("salvage", "Salvage beacon 100%", "Already at full salvage", SALVAGE_100, ctx, { owned: true }));
+    rows.push(row("salvage", "hull", "Salvage beacon 100%", "Already at full salvage", SALVAGE_100, ctx, { owned: true }));
   }
 
   rows.push(
-    row("energy", "Energy refill", "Top off shield cells", ENERGY, ctx, { full: ctx.energy >= ctx.energyMax - 0.5 }),
-    row("fuel", "Fuel top-off", "Fill the tank (burns in caverns)", FUEL, ctx, { full: ctx.fuel >= ctx.tankMax - 0.5 }),
+    row("energy", "consumables", "Energy refill", "Top off shield cells", ENERGY, ctx, { full: ctx.energy >= ctx.energyMax - 0.5 }),
+    row("fuel", "consumables", "Fuel top-off", "Fill the tank (burns in caverns)", FUEL, ctx, { full: ctx.fuel >= ctx.tankMax - 0.5 }),
   );
   return rows;
 }

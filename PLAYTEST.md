@@ -140,6 +140,16 @@ Hold `W`/`A`/`D` — tapping thrust does nothing useful. Canvas focus is grabbed
 - **Cross-map time at max engines**: the long axis is `SPACE_W` 6400000. Full engines (Mk 5) cap speed at `6400000 / 300 ≈ 21333 u/s`, so a straight burn across that axis is about **5 minutes**. Level 0 is 8800 u/s (about 12.1 minutes) — the old 880 u/s ladder, scaled with the map. Space thrust scales with the cap so the 0.32 drag term does not hold you under it.
 - **Hold Space**: holding Space (or the Fire pad) keeps firing. With Rapid feeder owned, the cooldown is 0.07s; without it, 0.17s.
 
+## Checklist — Hab-7 shop visual
+
+Dock with `?playtest=1` (`reentryWarpStation()` then `E`). Same catalog and prices — this pass is only how the overlay reads.
+
+- **Station mark**: above the HAB-7 title, a small canvas draws the station (cyan ring, orange dock arms, gold core) on `#000108`. No extra image in the bundle.
+- **Sections**: **Weapons** (twin, spread, rapid, wingman), **Engines** (Mk 1–5), **Hull** (fuel tank, energy cell, salvage beacon), **Consumables** (energy refill, fuel top-off). Weapons and Hull headers are cyan `#7ee7ff`; Engines and Consumables are orange.
+- **Owned**: cyan **Owned** chip, buy control disabled (guns you already have, wingman at the pet cap, salvage at 100%).
+- **Maxed**: orange **Maxed** chip (Engines Mk 5, tank or cell at 200, fuel or energy already full).
+- **Broke**: **Broke** chip and the existing `Need N more CR` line in the miss color. A ready row still shows the gold price and a cyan **Buy**.
+
 ## Loop checks
 
 1. **Menu → space**  
