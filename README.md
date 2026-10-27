@@ -2,6 +2,25 @@
 
 A neon arcade shooter with an 8-bit dive. Open space is a huge empty map (6.4M × 4.8M, linear 200× the old 32k × 24k field) with **no gravity** — caverns are thrust-only too. Cinder is unlocked. Fly in, press **E**, survive the cavern, and beat the planet boss for the key to the next world. Dock **Hab-7** in open space to spend banked credits on gear. Full engines cross the long axis in about five minutes.
 
+## Overnight 2026-10-27
+
+Smoke is green on `main` through #23 (`327702c`). Open `http://localhost:47331/?playtest=1` and walk the checklists in [PLAYTEST.md](PLAYTEST.md#overnight-2026-10-27).
+
+- **6.4M map** (#9) — 6.4M × 4.8M field, planet splash, chart fog, void folds. Engines Mk 5 crosses the long axis in about 5 minutes.
+- **Hab-7 sections** (#10) — Weapons, Engines, Hull, Consumables.
+- **Combo** (#11) — sits under the score, clear of the objective pill.
+- **Upgrade VFX** (#12) — shield ring, gun trails, pet glow.
+- **Music + mute** (#13, #16) — neon bed after Begin. Shot, hull, scrap/sip, shop, and void-fold stings follow `M`.
+- **36 salvage beacons** (#14) — orange **SCRAP** and cyan **SIP**.
+- **PLAYTEST sync** (#15) — severity notes match what already shipped.
+- **Void telegraph** (#17) — edge swirl and a ring pulse before the grab.
+- **Death / respawn** (#18) — shatter on hull breach, neon pop on return.
+- **Title / Begin** (#19) — brighter title glow, pulsing Begin chip.
+- **Shaft neon** (#20) — cyan and orange stroke on the first-dive shaft.
+- **Low-fuel pulse** (#21) — cavern fuel chip pulses under 20%.
+- **Rock silhouettes** (#22) — spike, splinter, and kite.
+- **Pause / chart** (#23) — solid pause plate. Chart labels **SCRAP**, **SIP**, and **VOID-FOLD**.
+
 ## Play
 
 - **Turn** with `A` / `D`. The nose is thrust-forward — `W` flies that way, `S` reverses
