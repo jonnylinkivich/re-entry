@@ -313,6 +313,12 @@ const HULL_POP = 0.36;
 const BEACON_RING_R = 120_000;
 const BEACON_CORE_R = 72;
 const BEACON_COLLECT_R = 4200;
+/**
+ * Cruise-scale read for Hab-7. A thin cyan pulse on the station, not a dock radius.
+ * `nearStation` stays `STATION.radius + DOCK_RANGE`. Hidden once zoomed into combat,
+ * same cutoff as the salvage rings, so the silhouette stays the close read.
+ */
+const HAB_RING_R = 100_000;
 const BEACON_SCRAP = 1;
 const BEACON_FUEL = 2;
 /** Lethal only for a *new* wall slam — not grinding the same surface. */
@@ -1629,6 +1635,23 @@ export class Game {
         self.ship.vx = 0;
         self.ship.vy = 0;
         self.ship.angle = -Math.PI / 2;
+        self.snapCam();
+      },
+      reentryHab: () => {
+        self.zone = "space";
+        self.cavern = null;
+        self.planet = null;
+        self.boss = null;
+        self.mode = "play";
+        const speed = spaceMaxSpeed(self.flightEngines());
+        self.ship.x = STATION.x - HAB_RING_R * 0.92;
+        self.ship.y = STATION.y;
+        self.ship.vx = speed;
+        self.ship.vy = 0;
+        self.ship.angle = 0;
+        self.zoom = SPACE_INTRO_ZOOM;
+        self.zoomWanted = SPACE_INTRO_ZOOM;
+        self.holeLock = 0;
         self.snapCam();
       },
       reentryWarpReentry: () => {
@@ -3221,17 +3244,25 @@ export class Game {
 
   private drawStation(ctx: CanvasRenderingContext2D): void {
     const boost = this.markerBoost(STATION.radius * 2, 16);
-    if (!this.inView(STATION.x, STATION.y, STATION.radius * boost + 80)) return;
+    const showCore = this.inView(STATION.x, STATION.y, STATION.radius * boost + 80);
+    const showRing = this.zoom < 0.08 && this.inView(STATION.x, STATION.y, HAB_RING_R);
+    if (!showCore && !showRing) return;
+    const x = this.rx(STATION.x);
+    const y = this.ry(STATION.y);
+    if (showRing) this.drawHabApproach(ctx, x, y);
+    if (!showCore) return;
     const t = performance.now() * 0.001;
+    const breathe = 0.55 + 0.45 * Math.sin(t * 2.4);
     ctx.save();
-    ctx.translate(this.rx(STATION.x), this.ry(STATION.y));
+    ctx.translate(x, y);
     ctx.scale(boost, boost);
-    ctx.strokeStyle = "rgba(126, 231, 255, 0.55)";
+    ctx.strokeStyle = "#7ee7ff";
+    ctx.globalAlpha = 0.22 + breathe * 0.28;
     ctx.lineWidth = Math.max(1.6, 3.2 / this.zoom) / boost;
     ctx.beginPath();
-    ctx.arc(0, 0, STATION.radius + 18, 0, Math.PI * 2);
+    ctx.arc(0, 0, STATION.radius + 12 + breathe * 10, 0, Math.PI * 2);
     ctx.stroke();
-    ctx.strokeStyle = "#7ee7ff";
+    ctx.globalAlpha = 1;
     ctx.beginPath();
     ctx.arc(0, 0, STATION.radius, 0, Math.PI * 2);
     ctx.stroke();
@@ -3250,6 +3281,40 @@ export class Game {
     ctx.arc(0, 0, STATION.radius * 0.28, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = "#ffe08a";
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** Faint cyan arcs at cruise scale. Shop-header ink (`#7ee7ff`), no new landmark. */
+  private drawHabApproach(ctx: CanvasRenderingContext2D, x: number, y: number): void {
+    const now = performance.now();
+    const spin = now * 0.00032;
+    const pulse = 0.55 + 0.45 * Math.sin(now * 0.0034);
+    const d = Math.hypot(this.ship.x - STATION.x, this.ship.y - STATION.y);
+    const near = clamp(1 - d / (HAB_RING_R * 1.35), 0, 1);
+    const alpha = 0.14 + near * 0.3;
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "#7ee7ff";
+    ctx.lineWidth = Math.max(1.15, 1.7 / this.zoom);
+    ctx.globalAlpha = alpha * 0.42;
+    ctx.beginPath();
+    ctx.arc(x, y, HAB_RING_R, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = alpha * pulse;
+    ctx.beginPath();
+    ctx.arc(x, y, HAB_RING_R, spin, spin + 1.2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(x, y, HAB_RING_R, spin + Math.PI, spin + Math.PI + 1.2);
+    ctx.stroke();
+    const inner = HAB_RING_R * (0.62 + pulse * 0.03);
+    ctx.globalAlpha = alpha * 0.5;
+    ctx.beginPath();
+    ctx.arc(x, y, inner, -spin * 1.25, -spin * 1.25 + 0.95);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(x, y, inner, -spin * 1.25 + Math.PI, -spin * 1.25 + Math.PI + 0.95);
     ctx.stroke();
     ctx.restore();
   }

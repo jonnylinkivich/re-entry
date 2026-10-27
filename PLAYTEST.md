@@ -23,6 +23,13 @@ Hold `W`/`A`/`D` — tapping thrust does nothing useful. After **Begin re-entry*
 - **Rock silhouettes** (#22) — [Space rocks](#space-rocks).
 - **Pause / chart legend** (#23) — [Pause / chart legend](#pause--chart-legend).
 
+## Hab approach
+
+Visual only. Dock reach is still `STATION.radius + 420`. The shop overlay is unchanged. No new sound. The chart already marks Hab with the cyan **H** diamond.
+
+- **Approach pulse**: `?playtest=1`, Begin, `reentryHab()`. A faint cyan ring breathes on the Hab-7 silhouette before you reach it (`#7ee7ff`, the shop-header ink). Open arcs, not a **SCRAP** / **SIP** diamond.
+- **Dock**: fly in until `Dock station — E`. `E` still opens the shop. Esc / Leave still undocks. Prices and rows are unchanged.
+
 ## Title / Begin
 
 - **RE-ENTRY** reads on `#000108`: near-white letters, cyan halo, orange outer glow. The word stays sharp.
