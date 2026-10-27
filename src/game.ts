@@ -18,6 +18,7 @@ import {
 } from "./audio.ts";
 import { BOSS_BY_PLANET, PlanetBoss } from "./boss.ts";
 import {
+  BEACONS,
   DOCK_RANGE,
   MAP_SCALE,
   HOLES,
@@ -26,6 +27,7 @@ import {
   SPACE_W,
   SPAWN_CLEARANCE,
   STATION,
+  type BeaconDef,
   type HoleDef,
   type Cavern,
   type PlanetDef,
@@ -279,6 +281,16 @@ const HOLE_CAPTURE_R = 1600;
 const HOLE_EXIT = 2800;
 const HOLE_LOCK = 3.2;
 const HOLE_EXIT_SPEED = 1600;
+/**
+ * Salvage landmarks on the 6.4M field. The ring is the cruise-scale read
+ * (a thin stroke, not a gradient). The core is the fly-through.
+ * +1 CR / +2 fuel — a full sweep is at most one credit per beacon.
+ */
+const BEACON_RING_R = 120_000;
+const BEACON_CORE_R = 72;
+const BEACON_COLLECT_R = 4200;
+const BEACON_SCRAP = 1;
+const BEACON_FUEL = 2;
 /** Lethal only for a *new* wall slam — not grinding the same surface. */
 const WALL_SLAM = 420;
 const RESCUE_FUEL = 24;
@@ -504,6 +516,8 @@ export class Game {
   /** Consume E/Enter until release so a hold can still fire once we reach a halo. */
   private interactLatch = false;
   private holeLock = 0;
+  /** One bit per beacon. Pays once per run; the mark stays up either way. */
+  private beaconSpent = new Uint8Array(BEACONS.length);
   private chart = chartFromString("");
   private startAt = -1e9;
 
@@ -692,6 +706,7 @@ export class Game {
     this.ship = this.freshShip(home.x + home.radius + SPAWN_CLEARANCE, home.y);
     this.ship.angle = Math.PI;
     this.holeLock = 0;
+    this.beaconSpent.fill(0);
     this.noteVisit();
     this.applyMetaLoadout();
     this.rocks = [];
@@ -926,6 +941,7 @@ export class Game {
     if (this.cavern) {
       drawCavern(ctx, this.cavern, this.camX, this.camY, this.w / z, this.h / z, z, this.renderOx, this.renderOy);
     } else {
+      this.drawBeacons(ctx);
       this.drawPlanets(ctx);
       this.drawStation(ctx);
       this.drawHoles(ctx);
@@ -1204,6 +1220,49 @@ export class Game {
     if (this.meta.visitedPlanets.includes(id)) return;
     this.meta.visitedPlanets = [...this.meta.visitedPlanets, id];
     saveMeta(this.meta);
+  }
+
+  /** Fly-through on the pre-fold segment so a void jump cannot sweep the field. */
+  private collectBeacons(x0: number, y0: number): void {
+    if (this.zone !== "space") return;
+    const x1 = this.ship.x;
+    const y1 = this.ship.y;
+    for (let i = 0; i < BEACONS.length; i++) {
+      if (this.beaconSpent[i]) continue;
+      const beacon = BEACONS[i];
+      if (!beacon) continue;
+      if (!segmentNear(x0, y0, x1, y1, beacon.x, beacon.y, BEACON_COLLECT_R)) continue;
+      this.beaconSpent[i] = 1;
+      this.payBeacon(beacon);
+    }
+  }
+
+  private payBeacon(beacon: BeaconDef): void {
+    sfxPickup();
+    let label = `+${BEACON_SCRAP} CR`;
+    let color = "#ffd36b";
+    if (beacon.kind === "scrap") {
+      this.meta.credits += BEACON_SCRAP;
+      this.credits = this.meta.credits;
+      this.runCredits += BEACON_SCRAP;
+      saveMeta(this.meta);
+    } else {
+      const room = this.tankMax() - this.fuel;
+      if (room >= 1) {
+        const sip = Math.min(BEACON_FUEL, room);
+        this.fuel += sip;
+        label = `+${Math.round(sip)} FUEL`;
+        color = "#7ee7ff";
+      } else {
+        this.meta.credits += BEACON_SCRAP;
+        this.credits = this.meta.credits;
+        this.runCredits += BEACON_SCRAP;
+        saveMeta(this.meta);
+      }
+    }
+    this.floaters.push({ x: beacon.x, y: beacon.y, text: label, life: 0.95, color });
+    this.burst(beacon.x, beacon.y, 4, beacon.kind === "fuel" ? "#7ee7ff" : "#ff6b3d", 90);
+    this.markHud();
   }
 
   private nearestHole(range: number): HoleDef | null {
@@ -1541,6 +1600,42 @@ export class Game {
         return { cells, planets: self.meta.visitedPlanets.slice() };
       },
       reentryHoles: () => HOLES.map((hole) => ({ id: hole.id, x: hole.x, y: hole.y })),
+      reentryBeacons: () =>
+        BEACONS.map((beacon) => ({
+          id: beacon.id,
+          x: Math.round(beacon.x),
+          y: Math.round(beacon.y),
+          kind: beacon.kind,
+          spent: self.beaconSpent[beacon.id] === 1,
+        })),
+      reentryBeacon: (id = 0) => {
+        const beacon = BEACONS[id] ?? BEACONS[0];
+        if (!beacon) return;
+        self.zone = "space";
+        self.cavern = null;
+        self.planet = null;
+        self.boss = null;
+        self.mode = "play";
+        const speed = spaceMaxSpeed(self.flightEngines());
+        const approach = BEACON_RING_R * 0.92;
+        let x = beacon.x - approach;
+        let angle = 0;
+        let vx = speed;
+        if (x < 4000) {
+          x = beacon.x + approach;
+          angle = Math.PI;
+          vx = -speed;
+        }
+        self.ship.x = x;
+        self.ship.y = beacon.y;
+        self.ship.vx = vx;
+        self.ship.vy = 0;
+        self.ship.angle = angle;
+        self.zoom = SPACE_INTRO_ZOOM;
+        self.zoomWanted = SPACE_INTRO_ZOOM;
+        self.holeLock = 0;
+        self.snapCam();
+      },
       reentryFold: (id = 0) => {
         const hole = HOLES[id] ?? HOLES[0];
         if (!hole) return;
@@ -2202,6 +2297,7 @@ export class Game {
       ship.y = next.y;
       ship.vx = next.vx;
       ship.vy = next.vy;
+      this.collectBeacons(x0, y0);
       this.captureHole(x0, y0);
       this.noteVisit();
     }
@@ -3270,6 +3366,17 @@ export class Game {
       ctx.font = "700 14px sans-serif";
       ctx.fillText(STATION.name, sx, sy + drawR + 6);
     }
+    ctx.font = "700 12px sans-serif";
+    for (const beacon of BEACONS) {
+      if (this.beaconSpent[beacon.id]) continue;
+      if (!this.inView(beacon.x, beacon.y, BEACON_CORE_R + 800)) continue;
+      const sx = (beacon.x - this.camX) * this.zoom;
+      const sy = (beacon.y - this.camY) * this.zoom;
+      const core = Math.max(BEACON_CORE_R * this.zoom, 10);
+      ctx.globalAlpha = 0.92;
+      ctx.fillStyle = beacon.kind === "fuel" ? "#7ee7ff" : "#ff6b3d";
+      ctx.fillText(beacon.kind === "fuel" ? "SIP" : "SCRAP", sx, sy + core + 6);
+    }
     ctx.restore();
   }
 
@@ -3315,6 +3422,58 @@ export class Game {
     ctx.textBaseline = "top";
     const labelY = y > this.h - 90 ? y - 28 : y + 16;
     ctx.fillText(label, x, labelY);
+  }
+
+  private drawBeacons(ctx: CanvasRenderingContext2D): void {
+    const spin = performance.now() * 0.00045;
+    const zoom = this.zoom;
+    for (const beacon of BEACONS) {
+      const showRing = zoom < 0.08 && this.inView(beacon.x, beacon.y, BEACON_RING_R);
+      const core = this.worldSpanForScreen(BEACON_CORE_R, 10);
+      const showCore = this.inView(beacon.x, beacon.y, core + 48);
+      if (!showRing && !showCore) continue;
+      const taken = this.beaconSpent[beacon.id] === 1;
+      const color = beacon.kind === "fuel" ? "#7ee7ff" : "#ff6b3d";
+      const x = this.rx(beacon.x);
+      const y = this.ry(beacon.y);
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = Math.max(1.2, 2 / zoom);
+      if (showRing) {
+        ctx.globalAlpha = taken ? 0.14 : 0.38;
+        ctx.beginPath();
+        ctx.arc(x, y, BEACON_RING_R, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = taken ? 0.2 : 0.82;
+        ctx.beginPath();
+        ctx.arc(x, y, BEACON_RING_R, spin + beacon.id, spin + beacon.id + 1.35);
+        ctx.stroke();
+        ctx.globalAlpha = taken ? 0.12 : 0.4;
+        ctx.beginPath();
+        ctx.arc(x, y, BEACON_RING_R * 0.62, -spin * 1.4 + beacon.id * 0.2, -spin * 1.4 + beacon.id * 0.2 + 0.95);
+        ctx.stroke();
+      }
+      if (showCore) {
+        ctx.globalAlpha = taken ? 0.1 : 0.22;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(x, y, core * 2.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = taken ? 0.34 : 1;
+        ctx.beginPath();
+        ctx.moveTo(x, y - core);
+        ctx.lineTo(x + core * 0.62, y);
+        ctx.lineTo(x, y + core);
+        ctx.lineTo(x - core * 0.62, y);
+        ctx.closePath();
+        ctx.fillStyle = "#000108";
+        ctx.fill();
+        ctx.lineWidth = Math.max(1.15, 1.8 / zoom);
+        ctx.strokeStyle = color;
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
   }
 
   private drawHoles(ctx: CanvasRenderingContext2D): void {
@@ -3381,6 +3540,14 @@ export class Game {
       const row = (i / CHART_COLS) | 0;
       ctx.fillRect(x + col * cw, y + row * ch, cw + 0.6, ch + 0.6);
     }
+    const pip = labeled ? 2.4 : 1.8;
+    for (const beacon of BEACONS) {
+      const taken = this.beaconSpent[beacon.id] === 1;
+      ctx.globalAlpha = taken ? 0.2 : 0.5;
+      ctx.fillStyle = beacon.kind === "fuel" ? "#7ee7ff" : "#ff6b3d";
+      ctx.fillRect(x + beacon.x * sx - pip * 0.5, y + beacon.y * sy - pip * 0.5, pip, pip);
+    }
+    ctx.globalAlpha = 1;
     for (const planet of PLANETS) {
       const seen = this.meta.visitedPlanets.includes(planet.id);
       ctx.globalAlpha = seen ? 1 : 0.5;

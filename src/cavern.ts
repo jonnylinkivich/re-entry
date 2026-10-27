@@ -98,6 +98,16 @@ export type HoleDef = {
   y: number;
 };
 
+export type BeaconKind = "scrap" | "fuel";
+
+/** Open-space salvage mark. Positions are seeded; the payoff lives in the run. */
+export type BeaconDef = {
+  id: number;
+  x: number;
+  y: number;
+  kind: BeaconKind;
+};
+
 const HOLE_ANCHORS: ReadonlyArray<readonly [number, number]> = [
   [0.18, 0.22],
   [0.42, 0.16],
@@ -331,6 +341,87 @@ export const PLANETS: PlanetDef[] = [
  * Separation stays on the order of a long hop so they read as landmarks.
  */
 export const HOLES: HoleDef[] = buildHoles();
+
+/**
+ * Neon salvage landmarks. 6×6 is 36 — dozens, not a field of particles.
+ * `mulberry` 918273. A nudge keeps each one off planet centers, Hab-7,
+ * void folds, and the other beacons. The map size is not involved.
+ */
+const BEACON_COLS = 6;
+const BEACON_ROWS = 6;
+
+function buildBeacons(): BeaconDef[] {
+  const rand = mulberry(918273);
+  const beacons: BeaconDef[] = [];
+  const planetClear = 170_000;
+  const stationClear = 140_000;
+  const holeClear = 200_000;
+  const beaconClear = 460_000;
+  for (let row = 0; row < BEACON_ROWS; row++) {
+    for (let col = 0; col < BEACON_COLS; col++) {
+      let x = ((col + 0.5) / BEACON_COLS) * SPACE_W + (rand() - 0.5) * SPACE_W * 0.06;
+      let y = ((row + 0.5) / BEACON_ROWS) * SPACE_H + (rand() - 0.5) * SPACE_H * 0.06;
+      for (let n = 0; n < 20; n++) {
+        let bad = false;
+        for (const planet of PLANETS) {
+          const dx = x - planet.x;
+          const dy = y - planet.y;
+          const d = Math.hypot(dx, dy);
+          if (d < planetClear) {
+            const push = d > 1 ? planetClear / d : planetClear;
+            x = planet.x + dx * push;
+            y = planet.y + dy * push;
+            bad = true;
+          }
+        }
+        const sdx = x - STATION.x;
+        const sdy = y - STATION.y;
+        const sd = Math.hypot(sdx, sdy);
+        if (sd < stationClear) {
+          const push = sd > 1 ? stationClear / sd : stationClear;
+          x = STATION.x + sdx * push;
+          y = STATION.y + sdy * push;
+          bad = true;
+        }
+        for (const hole of HOLES) {
+          const dx = x - hole.x;
+          const dy = y - hole.y;
+          const d = Math.hypot(dx, dy);
+          if (d < holeClear) {
+            const push = d > 1 ? holeClear / d : holeClear;
+            x = hole.x + dx * push;
+            y = hole.y + dy * push;
+            bad = true;
+          }
+        }
+        for (const other of beacons) {
+          const dx = x - other.x;
+          const dy = y - other.y;
+          const d = Math.hypot(dx, dy);
+          if (d < beaconClear) {
+            const push = d > 1 ? beaconClear / d : beaconClear;
+            x = other.x + dx * push;
+            y = other.y + dy * push;
+            bad = true;
+          }
+        }
+        x = clamp(x, SPACE_W * 0.05, SPACE_W * 0.95);
+        y = clamp(y, SPACE_H * 0.05, SPACE_H * 0.95);
+        if (!bad) break;
+      }
+      const id = beacons.length;
+      beacons.push({
+        id,
+        x,
+        y,
+        kind: id % 3 === 2 ? "fuel" : "scrap",
+      });
+    }
+  }
+  return beacons;
+}
+
+export const BEACONS: BeaconDef[] = buildBeacons();
 
 export function generateCavern(planet: PlanetDef): Cavern {
   const { cols, rows, tile } = planet;
