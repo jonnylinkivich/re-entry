@@ -1,6 +1,9 @@
 import {
+  sfxBeacon,
   sfxBoom,
   sfxBossHit,
+  sfxBuy,
+  sfxFold,
   sfxHit,
   sfxKey,
   sfxOver,
@@ -794,7 +797,7 @@ export class Game {
     this.applyShopBuy(row.id);
     this.shopHint = `${row.name} installed`;
     this.announce(row.name.toUpperCase());
-    sfxPickup();
+    sfxBuy();
     this.markHud();
   }
 
@@ -1238,7 +1241,7 @@ export class Game {
   }
 
   private payBeacon(beacon: BeaconDef): void {
-    sfxPickup();
+    sfxBeacon();
     let label = `+${BEACON_SCRAP} CR`;
     let color = "#ffd36b";
     if (beacon.kind === "scrap") {
@@ -1333,7 +1336,7 @@ export class Game {
     this.burst(spot.x, spot.y, 16, "#ff5ec8", 240);
     this.burst(spot.x, spot.y, 10, "#7ee7ff", 180);
     this.shake = 11;
-    sfxReentry();
+    if (HOLES.length > 0) sfxFold();
     this.announce("VOID FOLD");
     this.noteVisit();
   }

@@ -18,15 +18,19 @@ export function unlockAudio(): void {
 export function setMuted(value: boolean): void {
   if (muted === value) return;
   muted = value;
-  bedSig = "";
-  setMusicBed(bed);
+  applyMute();
 }
 
 export function toggleMuted(): boolean {
   muted = !muted;
+  applyMute();
+  return muted;
+}
+
+function applyMute(): void {
+  setSfxOpen(!muted);
   bedSig = "";
   setMusicBed(bed);
-  return muted;
 }
 
 export function isMuted(): boolean {
@@ -35,8 +39,17 @@ export function isMuted(): boolean {
 
 /**
  * Neon arcade bed. One looping buffer (no files, no per-frame oscillators).
- * Play peak stays under thrust (0.015) and shots (0.04). Pause / shop / cine / game over duck.
+ * Pause / shop / cine / game over duck the bed.
+ * Shot, hull, beacon, shop, and void-fold one-shots stay under this bed and do not duck:
+ * the shop confirm has to read while the bed is already pulled down.
+ * One-shot peaks stay under the play bed (MUSIC_PLAY × BED_PEAK ≈ 0.01).
+ * Square reads hotter than sine, so the shot tick sits a notch lower.
  */
+const SHOT_GAIN = 0.0065;
+const HIT_GAIN = 0.0055;
+const BEACON_GAIN = 0.0055;
+const BUY_GAIN = 0.0046;
+const FOLD_GAIN = 0.0052;
 const MUSIC_PLAY = 0.012;
 const MUSIC_SOFT = 0.004;
 const BED_PEAK = 0.8;
@@ -64,6 +77,25 @@ let music: MusicGraph | null = null;
 let probe: AnalyserNode | null = null;
 let probeSamples: Float32Array<ArrayBuffer> | null = null;
 let musicError = false;
+let sfxBus: GainNode | null = null;
+
+function sfxOut(a: AudioContext): GainNode {
+  if (!sfxBus) {
+    sfxBus = a.createGain();
+    sfxBus.gain.value = muted ? 0 : 1;
+    sfxBus.connect(a.destination);
+  }
+  return sfxBus;
+}
+
+/** Mute cuts in-flight one-shots on the same gate as the bed. */
+function setSfxOpen(open: boolean): void {
+  if (!sfxBus || !ctx) return;
+  const now = ctx.currentTime;
+  const param = sfxBus.gain;
+  param.cancelScheduledValues(now);
+  param.setValueAtTime(open ? 1 : 0, now);
+}
 
 export function setMusicBed(next: MusicBed): void {
   bed = next;
@@ -311,11 +343,12 @@ function beep(
   type: OscillatorType,
   gain = 0.06,
   slide?: number,
+  delay = 0,
 ): void {
   const a = audio();
   if (!a) return;
   sfxPlayed += 1;
-  const now = a.currentTime;
+  const now = a.currentTime + delay;
   const osc = a.createOscillator();
   const g = a.createGain();
   osc.type = type;
@@ -325,13 +358,13 @@ function beep(
   }
   g.gain.setValueAtTime(gain, now);
   g.gain.exponentialRampToValueAtTime(0.0008, now + duration);
-  osc.connect(g).connect(a.destination);
+  osc.connect(g).connect(sfxOut(a));
   osc.start(now);
   osc.stop(now + duration + 0.02);
 }
 
 export function sfxShoot(): void {
-  beep(720, 0.07, "square", 0.04, 180);
+  beep(920, 0.045, "square", SHOT_GAIN, 280);
 }
 
 export function sfxThrust(): void {
@@ -343,7 +376,24 @@ export function sfxBoom(size: number): void {
 }
 
 export function sfxHit(): void {
-  beep(180, 0.28, "square", 0.07, 55);
+  beep(156, 0.1, "sine", HIT_GAIN, 52);
+}
+
+/** Scrap and sip beacons share one short collect ping. */
+export function sfxBeacon(): void {
+  beep(680, 0.085, "triangle", BEACON_GAIN, 1180);
+}
+
+/** Shop purchase confirm. Two soft sine ticks, still under the ducked bed. */
+export function sfxBuy(): void {
+  beep(523, 0.07, "sine", BUY_GAIN);
+  beep(784, 0.09, "sine", BUY_GAIN * 0.8, undefined, 0.05);
+}
+
+/** Void-fold enter. Short falling sweep, not the re-entry cine sting. */
+export function sfxFold(): void {
+  beep(360, 0.16, "sine", FOLD_GAIN, 70);
+  beep(900, 0.1, "triangle", FOLD_GAIN * 0.45, 200);
 }
 
 export function sfxPickup(): void {
@@ -379,6 +429,7 @@ export function sfxBossHit(): void {
 export function sfxReentry(): void {
   const a = audio();
   if (!a) return;
+  const out = sfxOut(a);
   const now = a.currentTime;
   const rumble = a.createOscillator();
   const rg = a.createGain();
@@ -388,7 +439,7 @@ export function sfxReentry(): void {
   rg.gain.setValueAtTime(0.0008, now);
   rg.gain.exponentialRampToValueAtTime(0.07, now + 0.12);
   rg.gain.exponentialRampToValueAtTime(0.0008, now + 2.8);
-  rumble.connect(rg).connect(a.destination);
+  rumble.connect(rg).connect(out);
   rumble.start(now);
   rumble.stop(now + 2.85);
 
@@ -400,7 +451,7 @@ export function sfxReentry(): void {
   hg.gain.setValueAtTime(0.0008, now + 0.4);
   hg.gain.exponentialRampToValueAtTime(0.03, now + 0.55);
   hg.gain.exponentialRampToValueAtTime(0.0008, now + 2.5);
-  hiss.connect(hg).connect(a.destination);
+  hiss.connect(hg).connect(out);
   hiss.start(now + 0.4);
   hiss.stop(now + 2.55);
 
@@ -413,7 +464,7 @@ export function sfxReentry(): void {
     o.frequency.setValueAtTime(freq, t);
     g.gain.setValueAtTime(0.05, t);
     g.gain.exponentialRampToValueAtTime(0.0008, t + 0.28);
-    o.connect(g).connect(a.destination);
+    o.connect(g).connect(out);
     o.start(t);
     o.stop(t + 0.3);
   });
