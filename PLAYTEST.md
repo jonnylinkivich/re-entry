@@ -30,6 +30,11 @@ Draw-only. Drift, splits, hit circles, and damage stay as they are. Each space r
 - **First wave**: Begin. The opening rocks are not one repeated blob — a spike, a splinter, and a kite show up in that wave.
 - **Combat**: shooting, ramming, and the break into smaller rocks feel the same. Wave size is unchanged.
 
+## Pause / chart legend
+
+- **Pause panel**: `Esc` opens a solid `#000108` plate — cyan edge, orange inset — so **Paused** and Resume read over the field. Resume and `Esc` still return to play.
+- **Legend**: the **CHARTED** key labels orange **SCRAP**, cyan **SIP**, and a violet **VOID-FOLD** ring. Those marks match the pips. The player pip has a faint ring.
+
 ---
 
 ## Large map
