@@ -15,6 +15,14 @@ Hold `W`/`A`/`D` — tapping thrust does nothing useful. After **Begin re-entry*
 - **Entry flash**: the re-entry cine still hands off the same way (`reentrySpaceGrace` 0.4s). The cavern opens with a short orange/cyan rim and a falling streak (~0.36s). No new sound.
 - **E prompt**: `Re-enter Cinder — E` stays on `E`. The chip is a near-opaque plate, and the key sits in its own cap so it reads over the planet.
 
+## Low fuel
+
+Burn rates are unchanged (idle ~0.6/s, thrust ~9/s). The cavern fuel chip is the tell. `?playtest=1` exposes `reentryFuel(ratio)` — it opens Cinder if you are still in space, then sets the tank to that fraction.
+
+- **Low pulse**: under 20% the chip pulses orange and cyan. `reentryFuel(0.15)` does it and plays one soft blip. Calling it again while still low does not replay the blip. `reentryFuel(0.5)` arms the next drop.
+- **Critical flash**: at 8% and at empty the same chip flashes harder (`reentryFuel(0.08)`, `reentryFuel(0)`). Thrust still dies at 0, the stranded line still offers `R`, and a hit at empty still rescue-beams.
+- **Mute**: `M` or the mute chip silences that blip. The pulse and the flash stay on screen.
+
 ---
 
 ## Large map

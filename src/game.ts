@@ -4,6 +4,7 @@ import {
   sfxBossHit,
   sfxBuy,
   sfxFold,
+  sfxFuelLow,
   sfxBack,
   sfxHit,
   sfxKey,
@@ -344,6 +345,21 @@ function clamp(n: number, a: number, b: number): number {
   return Math.max(a, Math.min(b, n));
 }
 
+/** Cavern tank fraction where the fuel chip starts pulsing. Readability only. */
+export const FUEL_LOW_RATIO = 0.2;
+/** Stronger flash at this fraction and when the tank is empty. */
+export const FUEL_CRIT_RATIO = 0.08;
+
+export type FuelBand = "ok" | "low" | "critical";
+
+/** Below 20% pulses. At 8% and at empty the chip flashes harder. Burn rates are untouched. */
+export function fuelBand(fuel: number, maxFuel: number): FuelBand {
+  if (!(maxFuel > 0) || !Number.isFinite(fuel)) return "ok";
+  if (fuel <= 0 || fuel / maxFuel <= FUEL_CRIT_RATIO) return "critical";
+  if (fuel / maxFuel < FUEL_LOW_RATIO) return "low";
+  return "ok";
+}
+
 function enginesLevel(level: number): number {
   return clamp(Math.floor(level) || 0, 0, ENGINES_MAX);
 }
@@ -517,6 +533,8 @@ export class Game {
   private showFps = false;
   private liveHud: HudSnapshot | null = null;
   private fuel = 0;
+  /** True after the low-fuel blip until the tank climbs back to 20% or the dive ends. */
+  private fuelWarnLatched = false;
   private energy = 0;
   private diveCargo = 0;
   private prompt = "";
@@ -728,6 +746,7 @@ export class Game {
     }
     this.credits = this.meta.credits;
     this.fuel = this.runBoost ? Math.max(this.meta.maxFuel, 120) : this.meta.maxFuel;
+    this.fuelWarnLatched = false;
     this.energy = this.runBoost ? Math.max(this.meta.maxEnergy, 80) : this.meta.maxEnergy;
     this.zoom = SPACE_INTRO_ZOOM;
     this.zoomWanted = SPACE_INTRO_ZOOM;
@@ -946,6 +965,7 @@ export class Game {
     this.collide();
     this.updatePrompt();
     this.updateInteract();
+    this.noteFuelWarn();
     if (this.zone === "space") this.checkWave();
 
     if (this.hudDirty) {
@@ -1700,7 +1720,34 @@ export class Game {
         self.snapCam();
       },
       reentryAudio: () => audioSnapshot(),
+      reentryFuel: (ratio = 1) => {
+        if (self.zone !== "cavern" || !self.cavern) {
+          const home = PLANETS[0];
+          if (!home) return;
+          self.mode = "play";
+          self.enterPlanet(home);
+        }
+        const max = self.tankMax();
+        self.fuel = clamp(Number(ratio) || 0, 0, 1) * max;
+        self.markHud();
+        return { fuel: self.fuel, max, band: fuelBand(self.fuel, max) };
+      },
     });
+  }
+
+  /** One mute-aware blip when a dive crosses under 20%. Stays quiet until fuel recovers. */
+  private noteFuelWarn(): void {
+    if (this.zone !== "cavern") {
+      this.fuelWarnLatched = false;
+      return;
+    }
+    if (fuelBand(this.fuel, this.tankMax()) === "ok") {
+      this.fuelWarnLatched = false;
+      return;
+    }
+    if (this.fuelWarnLatched) return;
+    this.fuelWarnLatched = true;
+    sfxFuelLow();
   }
 
   private announce(text: string): void {
@@ -1911,6 +1958,7 @@ export class Game {
     this.floaters = [];
     this.diveCargo = 0;
     this.fuel = this.tankMax();
+    this.fuelWarnLatched = false;
     this.ship = this.freshShip(cavern.spawnX, cavern.spawnY);
     this.settleShip();
     for (const pet of this.pets) {

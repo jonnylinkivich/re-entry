@@ -336,6 +336,66 @@ body {
   background: #ffe08a;
 }
 
+#fuel-wrap.is-low #fuel-bar,
+#fuel-wrap.is-critical #fuel-bar {
+  background: currentColor;
+}
+
+#fuel-wrap.is-low .meter-track,
+#fuel-wrap.is-critical .meter-track {
+  border-color: currentColor;
+}
+
+#fuel-wrap.is-low {
+  animation: fuel-low-pulse 1.25s ease-in-out infinite;
+}
+
+#fuel-wrap.is-critical {
+  animation: fuel-crit-flash 0.48s ease-in-out infinite;
+}
+
+@keyframes fuel-low-pulse {
+  0%,
+  100% {
+    color: #ff6b3d;
+    text-shadow: 0 0 8px rgba(255, 107, 61, 0.55);
+    box-shadow:
+      0 0 0 1px rgba(255, 107, 61, 0.35),
+      0 0 14px rgba(255, 107, 61, 0.18);
+  }
+  50% {
+    color: #7ee7ff;
+    text-shadow: 0 0 10px rgba(126, 231, 255, 0.8);
+    box-shadow:
+      0 0 0 1px rgba(126, 231, 255, 0.55),
+      0 0 16px rgba(126, 231, 255, 0.28);
+  }
+}
+
+@keyframes fuel-crit-flash {
+  0%,
+  100% {
+    color: #ff6b3d;
+    text-shadow:
+      0 0 8px rgba(255, 107, 61, 0.95),
+      0 0 18px rgba(255, 107, 61, 0.55);
+    box-shadow:
+      0 0 0 1px rgba(255, 107, 61, 0.85),
+      0 0 18px rgba(255, 107, 61, 0.45);
+  }
+  50% {
+    color: #f7fbff;
+    text-shadow:
+      0 0 8px #fff,
+      0 0 16px #7ee7ff,
+      0 0 28px #ff6b3d;
+    box-shadow:
+      0 0 0 1px rgba(247, 251, 255, 0.95),
+      0 0 16px rgba(126, 231, 255, 0.85),
+      0 0 28px rgba(255, 107, 61, 0.7);
+  }
+}
+
 #energy-bar {
   display: block;
   height: 100%;
@@ -807,6 +867,28 @@ kbd {
       0 0 0 1px rgba(255, 107, 61, 0.8),
       0 0 16px rgba(126, 231, 255, 0.6),
       0 0 26px rgba(255, 107, 61, 0.34);
+  }
+
+  #fuel-wrap.is-low,
+  #fuel-wrap.is-critical {
+    animation: none;
+  }
+
+  #fuel-wrap.is-low {
+    color: #ff6b3d;
+    text-shadow: 0 0 8px rgba(255, 107, 61, 0.55);
+    box-shadow: 0 0 0 1px rgba(255, 107, 61, 0.45);
+  }
+
+  #fuel-wrap.is-critical {
+    color: #f7fbff;
+    text-shadow:
+      0 0 8px #fff,
+      0 0 14px #7ee7ff,
+      0 0 18px #ff6b3d;
+    box-shadow:
+      0 0 0 1px rgba(247, 251, 255, 0.9),
+      0 0 16px rgba(255, 107, 61, 0.55);
   }
 }
 

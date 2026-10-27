@@ -40,7 +40,7 @@ export function isMuted(): boolean {
 /**
  * Neon arcade bed. One looping buffer (no files, no per-frame oscillators).
  * Pause / shop / cine / game over duck the bed.
- * Shot, hull, beacon, shop, and void-fold one-shots stay under this bed and do not duck:
+ * Shot, hull, beacon, shop, void-fold, and low-fuel one-shots stay under this bed and do not duck:
  * the shop confirm has to read while the bed is already pulled down.
  * One-shot peaks stay under the play bed (MUSIC_PLAY × BED_PEAK ≈ 0.01).
  * Square reads hotter than sine, so the shot tick sits a notch lower.
@@ -50,6 +50,7 @@ const HIT_GAIN = 0.0055;
 const BEACON_GAIN = 0.0055;
 const BUY_GAIN = 0.0046;
 const FOLD_GAIN = 0.0052;
+const FUEL_WARN_GAIN = 0.0036;
 const MUSIC_PLAY = 0.012;
 const MUSIC_SOFT = 0.004;
 const BED_PEAK = 0.8;
@@ -405,6 +406,11 @@ export function sfxBuy(): void {
 export function sfxFold(): void {
   beep(360, 0.16, "sine", FOLD_GAIN, 70);
   beep(900, 0.1, "triangle", FOLD_GAIN * 0.45, 200);
+}
+
+/** One soft tick when the cavern tank crosses under 20%. Mute gate is the shared sfx bus. */
+export function sfxFuelLow(): void {
+  beep(880, 0.09, "sine", FUEL_WARN_GAIN, 520);
 }
 
 export function sfxPickup(): void {
