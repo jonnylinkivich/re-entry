@@ -79,6 +79,14 @@ Run-local, not required for a real playthrough:
 
 Hold `W`/`A`/`D` — tapping thrust does nothing useful. Canvas focus is grabbed on Begin — no extra click needed.
 
+## Checklist — stick, prompt pulse, engines
+
+- **Virtual stick** (`#pads`, visible in play): drag inside the cluster. A small deadzone at the center does not thrust or turn. Straight up on Thrust is a full burn with no turn; L or R alone is a full turn. A diagonal (thrust plus L or R) does both, but the vector is normalized so you do not get full thrust and full turn at once. Keyboard `A` / `D` / `W` / `S` stay digital — full axis, no deadzone — and win if held together with the stick.
+- **Prompt pulse**: fly into Cinder’s re-entry halo, Hab-7’s dock halo, or a cavern exit shaft. The first moment `#prompt` shows `Re-enter … — E`, `Dock station — E`, or `Launch to space — E`, the pill flashes brighter twice (orange, or cyan for dock), then falls back to the slow neon pulse. Locked-planet text and the stranded line do not flash. Leaving and re-entering the halo flashes again.
+- **Engines levels**: dock Hab-7. The row is **Engines Mk 1** through **Mk 5**, 45 CR each. It persists on `reentry-save` as `engines` (0–5) and shows a `Mk N` chip after the first buy. Each level raises space cruise only (cavern speed stays 390). `?playtest=1` starts with 80 CR, enough for one level. The maxed row reads Maxed.
+- **Cross-map time at max engines**: the long axis is `SPACE_W` 640000. Full engines cap speed at `640000 / 300 ≈ 2133 u/s`, so a straight burn across that axis is about **5 minutes**. Level 0 stays 880 u/s (about 12 minutes). Space thrust scales with the cap so the 0.32 drag term does not hold you under it. Do not expect the cap to follow a later map resize.
+- **Hold Space**: holding Space (or the Fire pad) keeps firing. With Rapid feeder owned, the cooldown is 0.07s; without it, 0.17s.
+
 ## Loop checks
 
 1. **Menu → space**  

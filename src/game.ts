@@ -36,6 +36,7 @@ import {
   ALL_PLANET_KEYS,
   ENERGY_DRAIN,
   ENERGY_HIT,
+  ENGINES_MAX,
   FUEL_IDLE,
   FUEL_THRUST,
   RESCUE_FEE,
@@ -203,6 +204,21 @@ const TURN = 4.8;
 const THRUST = 360;
 const MAX_SPEED_SPACE = 880;
 const MAX_SPEED_CAVE = 390;
+const SPACE_DRAG = 0.32;
+const CAVE_DRAG = 0.12;
+/**
+ * Hab-7 engines (meta.engines, 0..ENGINES_MAX). Fully upgraded long-axis
+ * cruise is about 5 minutes on the current field:
+ *   SPACE_W is 640000, so 640000 / 300s ≈ 2133 u/s.
+ * The cap is pinned to that 640000 — do not retie it if SPACE_W grows later.
+ * Space drag is `v *= 1 - SPACE_DRAG·dt` (0.32). A speed cap is reachable
+ * while thrusting only when THRUST > cap * 0.32 (360 > 880 * 0.32 today).
+ * Thrust scales with the cap so that stays true (about 873 at max, still
+ * above 2133 * 0.32). Caverns keep THRUST and MAX_SPEED_CAVE.
+ */
+const ENGINES_FIELD_W = 640000;
+const ENGINES_CROSSING_SEC = 300;
+const ENGINES_SPEED_CAP = ENGINES_FIELD_W / ENGINES_CROSSING_SEC;
 const BULLET_SPEED = 620;
 const BULLET_LIFE = 1.05;
 const MAX_PETS = 2;
@@ -244,6 +260,21 @@ const ROCK_STROKES = [
 
 function clamp(n: number, a: number, b: number): number {
   return Math.max(a, Math.min(b, n));
+}
+
+function enginesLevel(level: number): number {
+  return clamp(Math.floor(level) || 0, 0, ENGINES_MAX);
+}
+
+/** Space speed cap at this engines level. Level 0 is MAX_SPEED_SPACE; max is ~2133. */
+function spaceMaxSpeed(level: number): number {
+  const t = enginesLevel(level) / ENGINES_MAX;
+  return MAX_SPEED_SPACE + (ENGINES_SPEED_CAP - MAX_SPEED_SPACE) * t;
+}
+
+/** Space thrust. Same cap ratio as level 0 so drag does not undershoot the cap. */
+function spaceThrust(level: number): number {
+  return THRUST * (spaceMaxSpeed(level) / MAX_SPEED_SPACE);
 }
 
 function dist2(ax: number, ay: number, bx: number, by: number): number {
@@ -351,7 +382,9 @@ export class Game {
   private floaters: Floater[] = [];
   private stars: Star[] = [];
   private keys = new Set<string>();
-  private pads = new Set<string>();
+  /** Analog virtual stick. Keyboard flight does not write these. */
+  private stickTurn = 0;
+  private stickThrust = 0;
   private pointer: Pointer | null = null;
   private fireHeld = false;
   private queuedFire = false;
@@ -458,18 +491,22 @@ export class Game {
     }
   }
 
-  /** Touch-pad hold. Separate from `keys` so a pad release cannot drop a held keyboard key. */
-  pad(code: string, down: boolean): void {
-    if (down) this.pads.add(code);
-    else this.pads.delete(code);
+  /**
+   * Virtual-stick axes, each -1..1. Turn is left-negative. Thrust is forward-positive.
+   * Separate from `keys` so a stick release cannot drop a held A/D/W/S.
+   */
+  setStick(turn: number, thrust: number): void {
+    this.stickTurn = clamp(turn, -1, 1);
+    this.stickThrust = clamp(thrust, -1, 1);
   }
 
   clearPads(): void {
-    this.pads.clear();
+    this.stickTurn = 0;
+    this.stickThrust = 0;
   }
 
   private held(...codes: string[]): boolean {
-    return codes.some((code) => this.keys.has(code) || this.pads.has(code));
+    return codes.some((code) => this.keys.has(code));
   }
 
   setPointer(sx: number, sy: number, down: boolean): void {
@@ -832,7 +869,7 @@ export class Game {
 
   private loadoutLabels(): string[] {
     const keys = this.ownedKeys();
-    const key = `${this.gear.twin ? 1 : 0}${this.gear.spread ? 1 : 0}${this.gear.rapid ? 1 : 0}${this.ship.shielding ? 1 : 0}:${this.pets.length}:${this.tankMax()}:${this.meta.salvageRate}:${keys.join(",")}`;
+    const key = `${this.gear.twin ? 1 : 0}${this.gear.spread ? 1 : 0}${this.gear.rapid ? 1 : 0}${this.ship.shielding ? 1 : 0}:${this.pets.length}:${this.tankMax()}:${this.meta.salvageRate}:${this.meta.engines}:${keys.join(",")}`;
     if (key === this.loadoutCacheKey) return this.loadoutCached;
     const tags: string[] = [];
     if (this.gear.twin) tags.push("Twin");
@@ -842,6 +879,7 @@ export class Game {
     if (this.pets.length === 1) tags.push("Pet");
     if (this.pets.length > 1) tags.push(`${this.pets.length} Pets`);
     tags.push(`Tank ${Math.round(this.tankMax())}`);
+    if (this.meta.engines > 0) tags.push(`Mk ${this.meta.engines}`);
     tags.push(salvageLabel(this.meta.salvageRate));
     for (const id of keys) {
       if (id === "helix") tags.push("Helix Clear");
@@ -900,6 +938,10 @@ export class Game {
       energy: this.energy,
       tankMax: this.tankMax(),
       energyMax: this.energyMax(),
+      engines: this.meta.engines,
+      enginesMax: ENGINES_MAX,
+      spaceSpeed: Math.round(spaceMaxSpeed(this.meta.engines)),
+      nextSpaceSpeed: Math.round(spaceMaxSpeed(this.meta.engines + 1)),
     });
   }
 
@@ -933,6 +975,8 @@ export class Game {
       this.energy = this.energyMax();
     } else if (id === "fuel") {
       this.fuel = this.tankMax();
+    } else if (id === "engines") {
+      this.meta.engines = Math.min(ENGINES_MAX, this.meta.engines + 1);
     }
     this.persistLoadout();
   }
@@ -1145,7 +1189,10 @@ export class Game {
         angle: self.ship.angle,
         thrusting: self.ship.thrusting,
         reversing: self.ship.reversing,
-        pads: [...self.pads],
+        stickTurn: self.stickTurn,
+        stickThrust: self.stickThrust,
+        engines: self.meta.engines,
+        spaceSpeed: Math.round(spaceMaxSpeed(self.meta.engines)),
         keys: [...self.keys],
       }),
     });
@@ -1596,17 +1643,23 @@ export class Game {
     ship.cooldown = Math.max(0, ship.cooldown - dt);
     ship.invuln = Math.max(0, ship.invuln - dt);
 
-    const left = this.held("ArrowLeft", "KeyA");
-    const right = this.held("ArrowRight", "KeyD");
-    const keyThrust = this.held("ArrowUp", "KeyW");
-    const keyReverse = this.held("ArrowDown", "KeyS");
+    const keyLeft = this.keys.has("ArrowLeft") || this.keys.has("KeyA");
+    const keyRight = this.keys.has("ArrowRight") || this.keys.has("KeyD");
+    const keyForward = this.keys.has("ArrowUp") || this.keys.has("KeyW");
+    const keyBack = this.keys.has("ArrowDown") || this.keys.has("KeyS");
     const wantShield = this.held("ShiftLeft", "ShiftRight");
 
-    if (left) ship.angle -= TURN * dt;
-    if (right) ship.angle += TURN * dt;
+    // Keyboard stays digital and wins over the stick. W still beats S.
+    // The stick is already deadzoned and diagonally normalized.
+    let turn = keyLeft || keyRight ? (keyRight ? 1 : 0) - (keyLeft ? 1 : 0) : this.stickTurn;
+    let thrust = keyForward || keyBack ? (keyForward ? 1 : -1) : this.stickThrust;
+    turn = clamp(turn, -1, 1);
+    thrust = clamp(thrust, -1, 1);
+
+    if (turn !== 0) ship.angle += TURN * turn * dt;
     const canThrust = this.zone === "space" || this.fuel > 0;
-    ship.thrusting = canThrust && keyThrust;
-    ship.reversing = canThrust && keyReverse && !keyThrust;
+    ship.thrusting = canThrust && thrust > 0.02;
+    ship.reversing = canThrust && thrust < -0.02;
 
     if (wantShield && this.energy > 0) {
       if (!ship.shielding) sfxShield();
@@ -1619,11 +1672,12 @@ export class Game {
 
     if (ship.thrusting || ship.reversing) {
       const dir = ship.reversing ? -1 : 1;
-      const power = ship.reversing ? THRUST * 0.7 : THRUST;
+      const base = this.zone === "space" ? spaceThrust(this.meta.engines) : THRUST;
+      const power = (ship.reversing ? base * 0.7 : base) * Math.abs(thrust);
       ship.vx += Math.cos(ship.angle) * power * dir * dt;
       ship.vy += Math.sin(ship.angle) * power * dir * dt;
       if (this.zone === "cavern") {
-        this.fuel = Math.max(0, this.fuel - FUEL_THRUST * dt);
+        this.fuel = Math.max(0, this.fuel - FUEL_THRUST * dt * Math.abs(thrust));
       }
       this.thrustSfx -= dt;
       if (this.thrustSfx <= 0) {
@@ -1641,13 +1695,13 @@ export class Game {
       this.fuel = Math.max(0, this.fuel - FUEL_IDLE * dt);
     }
 
-    const maxSpeed = this.zone === "cavern" ? MAX_SPEED_CAVE : MAX_SPEED_SPACE;
+    const maxSpeed = this.zone === "cavern" ? MAX_SPEED_CAVE : spaceMaxSpeed(this.meta.engines);
     const speed = Math.hypot(ship.vx, ship.vy);
     if (speed > maxSpeed) {
       ship.vx = (ship.vx / speed) * maxSpeed;
       ship.vy = (ship.vy / speed) * maxSpeed;
     }
-    const drag = this.zone === "cavern" ? 0.12 : 0.32;
+    const drag = this.zone === "cavern" ? CAVE_DRAG : SPACE_DRAG;
     ship.vx *= Math.max(0, 1 - drag * dt);
     ship.vy *= Math.max(0, 1 - drag * dt);
 
@@ -1695,6 +1749,7 @@ export class Game {
       ship.vy = next.vy;
     }
 
+    // Hold Space, J/K, or the Fire pad. Rapid feeder owns the short cooldown.
     const wantFire =
       this.queuedFire ||
       this.fireHeld ||

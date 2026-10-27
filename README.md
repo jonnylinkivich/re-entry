@@ -38,9 +38,9 @@ Each planet is its own cavern. No down-pull — thrust-only flight, like Sub-Ter
 
 ### Hab-7 shop
 
-Dock in open space (not a cavern). Spend banked credits — and dive cargo if you somehow still hold any — on Twin (35), Spread (45), Rapid (40), a wingman (50, cap 2), fuel tank +15 (30), energy cell +15 (28), salvage 75%/100% (55/80), energy refill (12), and a cheap fuel top-off (8). Broke rows show how many credits are missing. Esc or Leave undocks. Purchases write into `reentry-save`.
+Dock in open space (not a cavern). Spend banked credits — and dive cargo if you somehow still hold any — on Twin (35), Spread (45), Rapid (40), Engines Mk 1–5 (45 each), a wingman (50, cap 2), fuel tank +15 (30), energy cell +15 (28), salvage 75%/100% (55/80), energy refill (12), and a cheap fuel top-off (8). Engines raise space cruise only, up to about 2133 u/s (a 5-minute burn along the 640000-wide field). Broke rows show how many credits are missing. Esc or Leave undocks. Purchases write into `reentry-save`.
 
-Keys, tank size, salvage rate, credits, shop loadout (guns / pets), and high score persist in `localStorage` (`reentry-save`, migrated from old `drift-*` keys).
+Keys, tank size, salvage rate, credits, shop loadout (guns / pets / engines), and high score persist in `localStorage` (`reentry-save`, migrated from old `drift-*` keys).
 
 ## Run locally
 
