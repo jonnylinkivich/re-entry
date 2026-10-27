@@ -4,6 +4,11 @@ Build first (`npm run build`). **Production (what players get):** `npm run previ
 
 Hold `W`/`A`/`D` — tapping thrust does nothing useful. After **Begin re-entry**, keys register without an extra canvas click (`ab18e9e` + Enter/Space no longer double-`start()`).
 
+## Title / Begin
+
+- **RE-ENTRY** reads on `#000108`: near-white letters, cyan halo, orange outer glow. The word stays sharp.
+- **Begin re-entry** is the hot chip under the controls (cyan fill, orange pip, slow pulse). Click, Enter, or Space still starts. No new keys.
+
 ---
 
 ## Large map
