@@ -261,18 +261,18 @@ Verified against this branch after the progression-loop land. Original main-bran
 
 | Issue | Hint |
 | --- | --- |
-| Space dogfight doesn’t read | `game.ts` `spawnRock` `away` distance 900–3100. Spawn a closer first wave, or start zoomed in (`zoomWanted`). |
+| Space dogfight doesn’t read | **Fixed.** First wave (`wave <= 1`) uses `openingBand` so rocks spawn inside the current view. Later waves stay a couple of seconds out at cruise. |
 | Cine skip from held Space | **Fixed.** `beginReentry` ignores Space for 0.4s (`reentrySpaceGrace`) and drops held Space so key-repeat cannot skip the sell. E / Esc / Enter still skip immediately. |
 | Fuel scramble vs climb fantasy | **Fixed for the first Cinder dive.** Two shaft cans (`+28`) on the carved approach until the Cinder key is owned. `START_MAX_FUEL` / `FUEL_THRUST` unchanged, so later dry tanks still rescue. |
 | Combo vs objective overlap | **Fixed.** `#combo` is left-aligned under the score row (`top` clears the HUD and safe area), so it no longer shares the center column with `#objective`. The mute chip stays top-right. Below 640px the objective still drops to the bottom. |
 | No spend sink for credits | **Fixed.** Hab-7 shop spends banked credits on guns / pets / tanks / salvage / refills. |
-| Mute has no persistent control | `KeyM` works; no button / icon. `setMuted` is used. |
+| Mute has no persistent control | **Fixed.** `#mute` speaker chip and `KeyM` both call `toggleMute`. `muted` persists on `reentry-save`. |
 
 ### P2
 
 | Issue | Hint |
 | --- | --- |
-| No music | `audio.ts` is SFX-only. |
+| No music | **Fixed.** `audio.ts` loops a generated neon bed (no audio files) after Begin. Peak stays under shots and thrust. Pause, shop, cine, and game over duck it. Mute cuts music and SFX together. |
 | Mobile is Fire-only | **Fixed** with P0 touch pads (L / Thrust / R / Rev + Fire). |
 | No shop for banked credits | **Fixed.** Hab-7 dock / shop overlay. |
 | Vite `base` | **Done for relative deploy:** `vite.config.ts` `base: "./"`. Root hosting still works; GitHub Pages project pages should keep `base: '/re-entry/'` or `./`. |

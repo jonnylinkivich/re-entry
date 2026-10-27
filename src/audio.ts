@@ -1,5 +1,6 @@
 let ctx: AudioContext | null = null;
 let muted = false;
+let sfxPlayed = 0;
 
 function audio(): AudioContext | null {
   if (muted) return null;
@@ -15,16 +16,293 @@ export function unlockAudio(): void {
 }
 
 export function setMuted(value: boolean): void {
+  if (muted === value) return;
   muted = value;
+  bedSig = "";
+  setMusicBed(bed);
 }
 
 export function toggleMuted(): boolean {
   muted = !muted;
+  bedSig = "";
+  setMusicBed(bed);
   return muted;
 }
 
 export function isMuted(): boolean {
   return muted;
+}
+
+/**
+ * Neon arcade bed. One looping buffer (no files, no per-frame oscillators).
+ * Play peak stays under thrust (0.015) and shots (0.04). Pause / shop / cine / game over duck.
+ */
+const MUSIC_PLAY = 0.012;
+const MUSIC_SOFT = 0.004;
+const BED_PEAK = 0.8;
+const BED_BPM = 96;
+const BED_EIGHTH = 60 / BED_BPM / 2;
+const BED_STEPS = 32;
+const BED_SECONDS = BED_EIGHTH * BED_STEPS;
+
+type MusicBed = "off" | "play" | "soft";
+type ToneShape = "sine" | "soft" | "tri";
+
+type MusicGraph = {
+  source: AudioBufferSourceNode;
+  filter: BiquadFilterNode;
+  gain: GainNode;
+  seconds: number;
+  peak: number;
+  edge: number;
+};
+
+let bed: MusicBed = "off";
+let bedSig = "";
+let gainNow = 0;
+let music: MusicGraph | null = null;
+let probe: AnalyserNode | null = null;
+let probeSamples: Float32Array<ArrayBuffer> | null = null;
+let musicError = false;
+
+export function setMusicBed(next: MusicBed): void {
+  bed = next;
+  const nextSig = `${muted ? 1 : 0}:${bed}`;
+  if (nextSig === bedSig) return;
+  try {
+    applyBed();
+    bedSig = nextSig;
+  } catch (err) {
+    bedSig = "";
+    if (!musicError) {
+      musicError = true;
+      console.error("RE-ENTRY music", err);
+    }
+  }
+}
+
+export function audioSnapshot(): {
+  muted: boolean;
+  bed: MusicBed;
+  gain: number;
+  play: number;
+  soft: number;
+  peak: number;
+  edge: number;
+  looping: boolean;
+  seconds: number;
+  rms: number;
+  sfx: number;
+  state: AudioContextState | "none";
+  time: number;
+} {
+  return {
+    muted,
+    bed,
+    gain: gainNow,
+    play: MUSIC_PLAY,
+    soft: MUSIC_SOFT,
+    peak: music?.peak ?? 0,
+    edge: music?.edge ?? 0,
+    looping: music != null,
+    seconds: music?.seconds ?? 0,
+    rms: musicRms(),
+    sfx: sfxPlayed,
+    state: ctx?.state ?? "none",
+    time: ctx?.currentTime ?? 0,
+  };
+}
+
+function applyBed(): void {
+  if (bed === "off") {
+    stopMusic();
+    gainNow = 0;
+    return;
+  }
+  if (muted) {
+    if (music) rampMusic(0);
+    else gainNow = 0;
+    return;
+  }
+  const a = audio();
+  if (!a) return;
+  if (a.state === "suspended") void a.resume();
+  if (!music) startMusic(a);
+  rampMusic(bed === "soft" ? MUSIC_SOFT : MUSIC_PLAY);
+}
+
+function rampMusic(target: number): void {
+  if (!music || !ctx) {
+    gainNow = target;
+    return;
+  }
+  const from = gainNow;
+  const seconds = target === from ? 0.02 : target === 0 ? 0.04 : from === 0 ? 0.5 : 0.28;
+  const param = music.gain.gain;
+  const now = ctx.currentTime;
+  if (typeof param.cancelAndHoldAtTime === "function") param.cancelAndHoldAtTime(now);
+  else {
+    param.cancelScheduledValues(now);
+    param.setValueAtTime(param.value, now);
+  }
+  param.linearRampToValueAtTime(target, now + seconds);
+  gainNow = target;
+}
+
+function startMusic(a: AudioContext): void {
+  const rendered = renderBed(Math.min(a.sampleRate, 32000));
+  const buffer = a.createBuffer(1, rendered.samples.length, rendered.rate);
+  buffer.getChannelData(0).set(rendered.samples);
+  const source = a.createBufferSource();
+  source.buffer = buffer;
+  source.loop = true;
+  const filter = a.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.frequency.value = 1600;
+  filter.Q.value = 0.5;
+  const gain = a.createGain();
+  gain.gain.value = 0;
+  source.connect(filter).connect(gain).connect(a.destination);
+  source.start();
+  music = {
+    source,
+    filter,
+    gain,
+    seconds: buffer.duration,
+    peak: rendered.peak,
+    edge: rendered.edge,
+  };
+  gainNow = 0;
+}
+
+function stopMusic(): void {
+  if (!music) return;
+  try {
+    music.source.stop();
+  } catch {
+    /* already stopped */
+  }
+  music.source.disconnect();
+  music.filter.disconnect();
+  music.gain.disconnect();
+  probe?.disconnect();
+  probe = null;
+  probeSamples = null;
+  music = null;
+}
+
+function musicRms(): number {
+  if (!music || !ctx || ctx.state !== "running") return 0;
+  if (!probe || !probeSamples) {
+    probe = ctx.createAnalyser();
+    probe.fftSize = 2048;
+    probeSamples = new Float32Array(probe.fftSize);
+    music.gain.connect(probe);
+  }
+  const samples = probeSamples;
+  probe.getFloatTimeDomainData(samples);
+  let sum = 0;
+  for (let i = 0; i < samples.length; i++) sum += samples[i]! * samples[i]!;
+  return Math.sqrt(sum / samples.length);
+}
+
+function renderBed(rate: number): { samples: Float32Array; rate: number; peak: number; edge: number } {
+  const length = Math.max(1, Math.round(BED_SECONDS * rate));
+  const data = new Float32Array(length);
+  const eighth = BED_EIGHTH;
+  const notes: Array<[number, number, number, number, ToneShape, number]> = [
+    // Bass octave pair, one chord per bar: Am Am F G.
+    [0, 110, 2.36, 0.22, "sine", 0.45],
+    [0, 220, 2.36, 0.42, "sine", 0.4],
+    [8, 110, 2.36, 0.22, "sine", 0.45],
+    [8, 220, 2.36, 0.42, "sine", 0.4],
+    [16, 87.31, 2.36, 0.2, "sine", 0.45],
+    [16, 174.61, 2.36, 0.4, "sine", 0.4],
+    [24, 98, 2.36, 0.2, "sine", 0.45],
+    [24, 196, 2.36, 0.4, "sine", 0.4],
+    // Quiet triads so the changes read without a drum machine.
+    [0, 261.63, 1.2, 0.07, "tri", 1.1],
+    [0, 329.63, 1.2, 0.06, "tri", 1.1],
+    [8, 261.63, 1.2, 0.07, "tri", 1.1],
+    [8, 329.63, 1.2, 0.06, "tri", 1.1],
+    [16, 220, 1.2, 0.07, "tri", 1.1],
+    [16, 261.63, 1.2, 0.06, "tri", 1.1],
+    [24, 246.94, 1.2, 0.07, "tri", 1.1],
+    [24, 293.66, 1.2, 0.06, "tri", 1.1],
+    // Sparse arp on the offbeats.
+    [2, 329.63, 0.24, 0.16, "soft", 6],
+    [5, 440, 0.22, 0.14, "soft", 6],
+    [10, 293.66, 0.24, 0.15, "soft", 6],
+    [13, 392, 0.22, 0.13, "soft", 6],
+    [18, 261.63, 0.24, 0.15, "soft", 6],
+    [21, 440, 0.22, 0.12, "soft", 6],
+    [26, 293.66, 0.24, 0.15, "soft", 6],
+    [29, 392, 0.22, 0.13, "soft", 6],
+    // Two short pings. Kept tiny so they sit under the shot attack.
+    [0, 659.25, 0.08, 0.04, "sine", 10],
+    [16, 523.25, 0.08, 0.035, "sine", 10],
+  ];
+  for (const [step, freq, dur, amp, shape, decay] of notes) {
+    addTone(data, rate, step * eighth, freq, dur, amp, shape, decay);
+  }
+  let peak = 0;
+  for (let i = 0; i < data.length; i++) peak = Math.max(peak, Math.abs(data[i]!));
+  let scale = peak > 0.0001 ? BED_PEAK / peak : 0;
+  if (scale * peak * MUSIC_PLAY >= 0.014) scale *= 0.014 / (scale * peak * MUSIC_PLAY);
+  if (scale !== 1) {
+    for (let i = 0; i < data.length; i++) data[i] = data[i]! * scale;
+  }
+  const fadeN = Math.max(1, Math.floor(0.004 * rate));
+  for (let i = 0; i < fadeN; i++) {
+    const k = i / fadeN;
+    data[i] = data[i]! * k;
+    const j = data.length - 1 - i;
+    data[j] = data[j]! * k;
+  }
+  peak = 0;
+  for (let i = 0; i < data.length; i++) peak = Math.max(peak, Math.abs(data[i]!));
+  let edge = 0;
+  const edgeN = Math.min(32, data.length);
+  for (let i = 0; i < edgeN; i++) {
+    edge = Math.max(edge, Math.abs(data[i]!), Math.abs(data[data.length - 1 - i]!));
+  }
+  return { samples: data, rate, peak, edge };
+}
+
+function addTone(
+  data: Float32Array,
+  rate: number,
+  startSec: number,
+  freq: number,
+  dur: number,
+  amp: number,
+  shape: ToneShape,
+  decay: number,
+): void {
+  const start = Math.floor(startSec * rate);
+  const count = Math.floor(dur * rate);
+  const attack = Math.max(1, Math.floor(0.018 * rate));
+  const release = Math.max(1, Math.floor(Math.min(0.08, dur * 0.4) * rate));
+  for (let i = 0; i < count; i++) {
+    const idx = start + i;
+    if (idx < 0 || idx >= data.length) continue;
+    let env = 1;
+    if (i < attack) env = i / attack;
+    const tail = count - i;
+    if (tail < release) env *= tail / release;
+    const t = i / rate;
+    env *= Math.exp(-t * decay);
+    const phase = 2 * Math.PI * freq * t;
+    let sample: number;
+    if (shape === "soft") {
+      sample = Math.sin(phase) * 0.62 + Math.sin(phase * 3) * 0.22 + Math.sin(phase * 5) * 0.08;
+    } else if (shape === "tri") {
+      sample = (2 / Math.PI) * Math.asin(Math.sin(phase));
+    } else {
+      sample = Math.sin(phase);
+    }
+    data[idx] = data[idx]! + sample * amp * env;
+  }
 }
 
 function beep(
@@ -36,6 +314,7 @@ function beep(
 ): void {
   const a = audio();
   if (!a) return;
+  sfxPlayed += 1;
   const now = a.currentTime;
   const osc = a.createOscillator();
   const g = a.createGain();
