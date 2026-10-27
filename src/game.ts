@@ -47,6 +47,7 @@ import {
   FUEL_IDLE,
   FUEL_THRUST,
   RESCUE_FEE,
+  START_MAX_ENERGY,
   chartFromString,
   chartIndex,
   chartToString,
@@ -116,6 +117,7 @@ type Ship = {
   thrusting: boolean;
   reversing: boolean;
   shielding: boolean;
+  muzzle: number;
 };
 
 type Gear = {
@@ -131,6 +133,7 @@ type Bullet = {
   vy: number;
   life: number;
   team: "ship" | "pet";
+  neon: boolean;
 };
 
 type Rock = {
@@ -233,6 +236,10 @@ const STOCK_SPEED_SPACE = 880 * MAP_SCALE;
 const ENGINES_SPEED_CAP = SPACE_W / 300;
 const BULLET_SPEED = 620;
 const BULLET_LIFE = 1.05;
+/** Shield-hit ring pulse. The hull blink from `invuln` stays the hit FX. */
+const SHIELD_PULSE = 0.22;
+/** Owned-gun muzzle stroke. Short enough that rapid fire does not smear. */
+const MUZZLE_FLASH = 0.055;
 const MAX_PETS = 2;
 const MAX_ROCKS = 40;
 const MAX_SPARKS = 48;
@@ -451,6 +458,7 @@ export class Game {
   private fireHeld = false;
   private queuedFire = false;
   private shake = 0;
+  private shieldPulse = 0;
   private bannerLife = 0;
   private comboLife = 0;
   private thrustSfx = 0;
@@ -1098,6 +1106,7 @@ export class Game {
       thrusting: false,
       reversing: false,
       shielding: false,
+      muzzle: 0,
     };
   }
 
@@ -2071,6 +2080,8 @@ export class Game {
     const ship = this.ship;
     ship.cooldown = Math.max(0, ship.cooldown - dt);
     ship.invuln = Math.max(0, ship.invuln - dt);
+    ship.muzzle = Math.max(0, ship.muzzle - dt);
+    this.shieldPulse = Math.max(0, this.shieldPulse - dt);
 
     const keyLeft = this.keys.has("ArrowLeft") || this.keys.has("KeyA");
     const keyRight = this.keys.has("ArrowRight") || this.keys.has("KeyD");
@@ -2202,6 +2213,7 @@ export class Game {
       this.energy = Math.max(0, this.energy - ENERGY_HIT);
       ship.invuln = 0.75;
       this.shake = 7;
+      this.shieldPulse = SHIELD_PULSE;
       if (this.energy <= 0) ship.shielding = false;
       this.markHud();
       sfxBoom(1);
@@ -2213,6 +2225,8 @@ export class Game {
   private fire(): void {
     const ship = this.ship;
     ship.cooldown = this.gear.rapid ? 0.07 : 0.17;
+    const neon = this.gunsOwned();
+    if (neon) ship.muzzle = MUZZLE_FLASH;
     const shots = this.shipShots();
     for (const shot of shots) {
       const a = ship.angle + shot.angle;
@@ -2231,9 +2245,19 @@ export class Game {
         vy: Math.sin(a) * BULLET_SPEED + ship.vy,
         life: BULLET_LIFE,
         team: "ship",
+        neon,
       });
     }
     sfxShoot();
+  }
+
+  private gunsOwned(): boolean {
+    return this.gear.twin || this.gear.spread || this.gear.rapid;
+  }
+
+  /** Energy cell is the Hull shield upgrade. Stock max stays a bare hull. */
+  private hullShieldOwned(): boolean {
+    return this.meta.maxEnergy > START_MAX_ENERGY;
   }
 
   private shipShots(): { angle: number; lateral: number }[] {
@@ -2316,6 +2340,7 @@ export class Game {
             vy: Math.sin(pet.angle) * 520 + pet.vy,
             life: 0.85,
             team: "pet",
+            neon: false,
           });
         }
       } else {
@@ -2976,10 +3001,32 @@ export class Game {
   }
 
   private drawBullet(ctx: CanvasRenderingContext2D, b: Bullet): void {
-    ctx.fillStyle = b.team === "pet" ? "#7dffb1" : "#e8ffff";
+    const x = this.rx(b.x);
+    const y = this.ry(b.y);
+    if (b.neon) {
+      const speed = Math.hypot(b.vx, b.vy) || 1;
+      const len = this.worldSpanForScreen(14, 8);
+      const dx = (b.vx / speed) * len;
+      const dy = (b.vy / speed) * len;
+      ctx.beginPath();
+      ctx.moveTo(x - dx, y - dy);
+      ctx.lineTo(x, y);
+      ctx.strokeStyle = "rgba(126, 231, 255, 0.72)";
+      ctx.lineWidth = this.worldSpanForScreen(1.35, 1.15);
+      ctx.lineCap = "round";
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x - dx * 0.28, y - dy * 0.28);
+      ctx.lineTo(x, y);
+      ctx.strokeStyle = "#ffc14d";
+      ctx.lineWidth = this.worldSpanForScreen(1.05, 1);
+      ctx.stroke();
+      ctx.lineCap = "butt";
+    }
+    ctx.fillStyle = b.team === "pet" ? "#7dffb1" : b.neon ? "#7ee7ff" : "#e8ffff";
     ctx.beginPath();
     const br = this.worldSpanForScreen(b.team === "pet" ? 2 : 2.4, 2);
-    ctx.arc(this.rx(b.x), this.ry(b.y), br, 0, Math.PI * 2);
+    ctx.arc(x, y, br, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -3027,11 +3074,22 @@ export class Game {
     const boost = this.markerBoost(20, 10);
     ctx.scale(boost, boost);
     ctx.beginPath();
+    ctx.arc(0, 0, 12, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(125, 255, 177, 0.16)";
+    ctx.fill();
+    ctx.lineWidth = 1.35 / boost;
+    ctx.strokeStyle = "rgba(126, 231, 255, 0.42)";
+    ctx.stroke();
+    ctx.beginPath();
     ctx.moveTo(10, 0);
     ctx.lineTo(-7, 6);
     ctx.lineTo(-3, 0);
     ctx.lineTo(-7, -6);
     ctx.closePath();
+    ctx.lineJoin = "round";
+    ctx.lineWidth = 4.5 / boost;
+    ctx.strokeStyle = "rgba(125, 255, 177, 0.4)";
+    ctx.stroke();
     ctx.fillStyle = "#07140e";
     ctx.fill();
     ctx.lineWidth = 2 / boost;
@@ -3040,21 +3098,66 @@ export class Game {
     ctx.restore();
   }
 
+  private drawShieldBubble(ctx: CanvasRenderingContext2D, boost: number): void {
+    const up = this.ship.shielding;
+    const pulse = this.shieldPulse > 0 ? this.shieldPulse / SHIELD_PULSE : 0;
+    if (!up && !this.hullShieldOwned() && pulse <= 0) return;
+    const breathe = 0.5 + 0.5 * Math.sin(performance.now() * 0.005);
+    const base = up ? 0.3 + breathe * 0.08 : 0.16 + breathe * 0.06;
+    const strokeA = Math.min(0.72, base + pulse * 0.38);
+    const radius = 20 + (up ? 1.5 : 0) + pulse * 3.5;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(126, 231, 255, ${(strokeA * 0.28).toFixed(3)})`;
+    ctx.fill();
+    ctx.lineWidth = (1.25 + pulse * 0.8) / boost;
+    ctx.strokeStyle = `rgba(126, 231, 255, ${strokeA.toFixed(3)})`;
+    ctx.stroke();
+  }
+
+  private drawMuzzle(ctx: CanvasRenderingContext2D, boost: number): void {
+    const life = this.ship.muzzle;
+    if (life <= 0 || !this.gunsOwned()) return;
+    const t = clamp(life / MUZZLE_FLASH, 0, 1);
+    ctx.globalAlpha = 0.4 + 0.6 * t;
+    ctx.lineCap = "round";
+    for (const shot of this.shipShots()) {
+      const len = 7 + 8 * t;
+      const x0 = 15;
+      const y0 = shot.lateral;
+      const x1 = x0 + Math.cos(shot.angle) * len;
+      const y1 = y0 + Math.sin(shot.angle) * len;
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
+      ctx.strokeStyle = "#7ee7ff";
+      ctx.lineWidth = 1.5 / boost;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x0 + Math.cos(shot.angle) * len * 0.38, y0 + Math.sin(shot.angle) * len * 0.38);
+      ctx.strokeStyle = "#ffc14d";
+      ctx.lineWidth = 2.2 / boost;
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    ctx.lineCap = "butt";
+  }
+
   private drawShip(ctx: CanvasRenderingContext2D): void {
     const ship = this.ship;
-    if (ship.invuln > 0 && Math.floor(ship.invuln * 12) % 2 === 0) return;
+    const blink = ship.invuln > 0 && Math.floor(ship.invuln * 12) % 2 === 0;
     ctx.save();
     ctx.translate(this.rx(ship.x), this.ry(ship.y));
     ctx.rotate(ship.angle);
     const boost = this.markerBoost(32, 12);
     ctx.scale(boost, boost);
-    if (ship.shielding) {
-      ctx.beginPath();
-      ctx.arc(0, 0, 18, 0, Math.PI * 2);
-      ctx.strokeStyle = "rgba(126, 231, 255, 0.75)";
-      ctx.lineWidth = 2 / boost;
-      ctx.stroke();
+    this.drawShieldBubble(ctx, boost);
+    if (blink) {
+      ctx.restore();
+      return;
     }
+    this.drawMuzzle(ctx, boost);
     ctx.beginPath();
     ctx.moveTo(16, 0);
     ctx.lineTo(-12, 9);

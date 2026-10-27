@@ -150,6 +150,14 @@ Dock with `?playtest=1` (`reentryWarpStation()` then `E`). Same catalog and pric
 - **Maxed**: orange **Maxed** chip (Engines Mk 5, tank or cell at 200, fuel or energy already full).
 - **Broke**: **Broke** chip and the existing `Need N more CR` line in the miss color. A ready row still shows the gold price and a cyan **Buy**.
 
+## Checklist — upgrade neon
+
+Visual only. Same shop rows, prices, and speeds. Own the gear at Hab-7 (or pick it up), then look at the ship.
+
+- **Shield**: an owned energy cell (Hull) draws a low-alpha cyan ring around the ship. Holding `Shift` raises that bubble while energy lasts. A shielded hit pulses the ring once; the ship still blinks.
+- **Guns**: Twin, Spread, or Rapid shots leave a short `#7ee7ff` trail with an orange muzzle stroke. The stock gun stays a plain bolt.
+- **Pet**: a wingman drone keeps its green silhouette and gains a faint neon glow so it stays readable at cruise.
+
 ## Loop checks
 
 1. **Menu → space**  
