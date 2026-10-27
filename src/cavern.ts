@@ -258,7 +258,7 @@ export function generateCavern(planet: PlanetDef): Cavern {
   const solid = new Uint8Array(cols * rows);
   solid.fill(1);
   const rand = mulberry(planet.seed);
-  const shaft = Math.floor(cols / 2);
+  const { shaft, bossC, bossR } = bossAnchor(cols, rows);
 
   const carve = (c: number, r: number, rad: number): void => {
     for (let y = r - rad; y <= r + rad; y++) {
@@ -319,19 +319,10 @@ export function generateCavern(planet: PlanetDef): Cavern {
   }
   for (let r = 0; r < 22; r++) carve(shaft, r, 3);
 
-  const bossC = clamp(Math.floor(cols * 0.7), 18, cols - 18);
-  const bossR = rows - 22;
   carve(bossC, bossR, 9);
   carve(bossC - 6, bossR, 5);
   carve(bossC + 6, bossR + 2, 5);
-  let cc = shaft;
-  let rr = 18;
-  while (rr < bossR || Math.abs(cc - bossC) > 1) {
-    carve(cc, rr, 3);
-    if (rr < bossR) rr += 1;
-    if (cc < bossC) cc += 1;
-    else if (cc > bossC) cc -= 1;
-  }
+  for (const cell of bossApproach(planet)) carve(cell.c, cell.r, 3);
 
   const spawnX = (shaft + 0.5) * tile;
   const spawnY = 7 * tile;
@@ -481,6 +472,29 @@ export function drawCavern(
     }
   }
   if (strokeEdges) ctx.stroke();
+}
+
+function bossAnchor(cols: number, rows: number): { shaft: number; bossC: number; bossR: number } {
+  return {
+    shaft: Math.floor(cols / 2),
+    bossC: clamp(Math.floor(cols * 0.7), 18, cols - 18),
+    bossR: rows - 22,
+  };
+}
+
+/** Open cells along the carved run from the entry shaft to the boss room. */
+export function bossApproach(planet: PlanetDef): { c: number; r: number }[] {
+  const { shaft, bossC, bossR } = bossAnchor(planet.cols, planet.rows);
+  const cells: { c: number; r: number }[] = [];
+  let cc = shaft;
+  let rr = 18;
+  while (rr < bossR || Math.abs(cc - bossC) > 1) {
+    cells.push({ c: cc, r: rr });
+    if (rr < bossR) rr += 1;
+    if (cc < bossC) cc += 1;
+    else if (cc > bossC) cc -= 1;
+  }
+  return cells;
 }
 
 export function emptySpots(cav: Cavern, count: number, seed: number, minRow = 18): { x: number; y: number }[] {

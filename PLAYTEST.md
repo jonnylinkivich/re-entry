@@ -190,8 +190,8 @@ Verified against this branch after the progression-loop land. Original main-bran
 | Issue | Hint |
 | --- | --- |
 | Space dogfight doesn’t read | `game.ts` `spawnRock` `away` distance 900–3100. Spawn a closer first wave, or start zoomed in (`zoomWanted`). |
-| Cine skip from held Space | `game.ts` `key()` — `Space` skips cine. Clear `keys` / ignore held Space for ~0.4s when `beginReentry` starts. |
-| Fuel scramble vs climb fantasy | `meta.ts` `FUEL_THRUST` / idle drain vs `tankMax()` 40. Easy to strand before Ember Warden without `?playtest=1`. Either a shaft fuel pad or a first-dive tank bump. |
+| Cine skip from held Space | **Fixed.** `beginReentry` ignores Space for 0.4s (`reentrySpaceGrace`) and drops held Space so key-repeat cannot skip the sell. E / Esc / Enter still skip immediately. |
+| Fuel scramble vs climb fantasy | **Fixed for the first Cinder dive.** Two shaft cans (`+28`) on the carved approach until the Cinder key is owned. `START_MAX_FUEL` / `FUEL_THRUST` unchanged, so later dry tanks still rescue. |
 | Combo vs objective overlap | `style.css` `#combo` `top: 72px` sits under `#objective`. |
 | No spend sink for credits | **Fixed.** Hab-7 shop spends banked credits on guns / pets / tanks / salvage / refills. |
 | Mute has no persistent control | `KeyM` works; no button / icon. `setMuted` is used. |

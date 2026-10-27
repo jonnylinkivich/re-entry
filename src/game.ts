@@ -26,6 +26,7 @@ import {
   type PlanetDef,
   circleHitsSolid,
   drawCavern,
+  bossApproach,
   emptySpots,
   generateCavern,
   inExitShaft,
@@ -247,6 +248,15 @@ const ROCK_CLEAR_R = 1800;
 const WALL_SLAM = 420;
 const RESCUE_FUEL = 24;
 const TRANSIT_LOCK = 2.4;
+/** Held Space auto-repeats into the re-entry skip. Let the sell play this long. */
+const REENTRY_SPACE_GRACE = 0.4;
+/**
+ * First Cinder dive only (no key yet). Starter tank is 40; holding thrust
+ * coasts short of Ember Warden. Two cans on the carved shaft, not a saved
+ * tank bump — later worlds still dry out into the rescue beam.
+ */
+const CINDER_SHAFT_FUEL = 28;
+const CINDER_SHAFT_AT = [0.2, 0.78];
 const ROCK_STROKES = [
   "#7ee7ff",
   "#ffb36b",
@@ -424,6 +434,7 @@ export class Game {
   private spaceHold: SpaceHold | null = null;
   private cine: ReentryCine | RescueCine | null = null;
   private cineKind: "reentry" | "rescue" | null = null;
+  private reentrySpaceGrace = 0;
   private pendingPlanet: PlanetDef | null = null;
   private meta: MetaState;
   private runBoost = false;
@@ -478,8 +489,13 @@ export class Game {
     if (code === "KeyR" && this.mode === "play") this.tryRescue();
     if (code === "KeyM") this.toggleMute();
     if (code === "Space") {
-      if (this.mode === "cine") this.skipCine();
-      else if (this.mode === "menu" || this.mode === "over") this.start();
+      if (this.mode === "cine") {
+        if (this.cineKind === "reentry" && this.reentrySpaceGrace > 0) {
+          this.keys.delete("Space");
+          return;
+        }
+        this.skipCine();
+      } else if (this.mode === "menu" || this.mode === "over") this.start();
     }
     if (code === "Escape" || code === "KeyP") {
       if (this.mode === "cine") this.skipCine();
@@ -564,6 +580,7 @@ export class Game {
     this.spaceHold = null;
     this.cine = null;
     this.cineKind = null;
+    this.reentrySpaceGrace = 0;
     this.pendingPlanet = null;
     this.wallGrind = false;
     this.transitLock = 0;
@@ -757,6 +774,7 @@ export class Game {
     }
 
     if (this.cine) {
+      this.reentrySpaceGrace = Math.max(0, this.reentrySpaceGrace - t);
       this.cine.update(t);
       if (this.cine.done) this.finishCine();
       return;
@@ -1336,6 +1354,8 @@ export class Game {
     this.cineKind = "reentry";
     this.cine = new ReentryCine(planet);
     this.mode = "cine";
+    this.reentrySpaceGrace = REENTRY_SPACE_GRACE;
+    this.keys.delete("Space");
     sfxReentry();
     this.markHud();
   }
@@ -1360,6 +1380,7 @@ export class Game {
     const kind = this.cineKind;
     this.cine = null;
     this.cineKind = null;
+    this.reentrySpaceGrace = 0;
     this.pendingPlanet = null;
     this.mode = "play";
     this.keys.delete("KeyE");
@@ -1502,6 +1523,30 @@ export class Game {
         kind: "fuel",
         life: 240,
         value: 16,
+      });
+    }
+    this.seedCinderShaftFuel(planet, cavern);
+  }
+
+  /** Guaranteed cans on the Cinder shaft until Ember Warden drops the key. */
+  private seedCinderShaftFuel(planet: PlanetDef, cavern: Cavern): void {
+    if (planet.id !== "cinder" || this.meta.keys.includes("cinder")) return;
+    const trail = bossApproach(planet);
+    if (trail.length < 8) return;
+    for (const frac of CINDER_SHAFT_AT) {
+      const cell = trail[Math.round((trail.length - 1) * frac)];
+      if (!cell) continue;
+      const x = (cell.c + 0.5) * cavern.tile;
+      const y = (cell.r + 0.5) * cavern.tile;
+      if (this.nearBoss(x, y, cavern, 160)) continue;
+      this.pickups.push({
+        x,
+        y,
+        vx: 0,
+        vy: 0,
+        kind: "fuel",
+        life: 240,
+        value: CINDER_SHAFT_FUEL,
       });
     }
   }
