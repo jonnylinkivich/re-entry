@@ -1,0 +1,16 @@
+{
+  "name": "RE-ENTRY",
+  "install": "npm install",
+  "terminals": [
+    {
+      "name": "vite-dev",
+      "command": "npm run dev"
+    }
+  ],
+  "ports": [
+    {
+      "name": "vite",
+      "port": 47331
+    }
+  ]
+}
