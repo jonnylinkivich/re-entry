@@ -11,6 +11,8 @@ import {
   sfxShoot,
   sfxThrust,
   sfxWave,
+  audioSnapshot,
+  setMusicBed,
   setMuted,
   toggleMuted,
 } from "./audio.ts";
@@ -699,8 +701,16 @@ export class Game {
     this.clearHazardsNearShip(this.wave <= 1 ? 70 : ROCK_CLEAR_R);
     this.announce("CINDER AHEAD");
     sfxWave();
+    this.syncMusic();
     this.bindPlaytestHooks();
     this.markHud();
+  }
+
+  /** Silent menu. Full bed in play. Duck under pause, shop, cine, and game over. */
+  private syncMusic(): void {
+    if (this.mode === "menu") setMusicBed("off");
+    else if (this.mode === "play") setMusicBed("play");
+    else setMusicBed("soft");
   }
 
   pause(): void {
@@ -834,6 +844,7 @@ export class Game {
   }
 
   update(dt: number): void {
+    this.syncMusic();
     const t = clamp(dt, 0, 0.05);
     this.transitLock = Math.max(0, this.transitLock - t);
     if (!this.motionOk()) this.sanitizeView();
@@ -1548,6 +1559,7 @@ export class Game {
         self.zoomWanted = SPACE_INTRO_ZOOM;
         self.snapCam();
       },
+      reentryAudio: () => audioSnapshot(),
     });
   }
 
