@@ -1,6 +1,7 @@
 import "./style.css";
 import { unlockAudio } from "./audio.ts";
 import { Game, type HudSnapshot, type Mode } from "./game.ts";
+import { SHOP_SECTIONS, type ShopRow } from "./shop.ts";
 
 function must<T extends Element>(value: T | null, id: string): T {
   if (!value) throw new Error(`RE-ENTRY failed to mount: missing ${id}.`);
@@ -27,6 +28,7 @@ const shopLeaveBtn = must(document.querySelector<HTMLButtonElement>("#shop-leave
 const shopCreditsEl = must(document.querySelector<HTMLElement>("#shop-credits"), "#shop-credits");
 const shopListEl = must(document.querySelector<HTMLElement>("#shop-list"), "#shop-list");
 const shopHintEl = must(document.querySelector<HTMLElement>("#shop-hint"), "#shop-hint");
+const shopMarkEl = must(document.querySelector<HTMLCanvasElement>("#shop-mark"), "#shop-mark");
 const fireBtn = must(document.querySelector<HTMLButtonElement>("#fire"), "#fire");
 const muteBtn = must(document.querySelector<HTMLButtonElement>("#mute"), "#mute");
 const padsEl = must(document.querySelector<HTMLElement>("#pads"), "#pads");
@@ -185,41 +187,146 @@ function syncLiveHud(snapshot: HudSnapshot): void {
   }
 }
 
+function shopStatusLabel(status: ShopRow["status"]): string {
+  if (status === "ready") return "Buy";
+  if (status === "broke") return "Broke";
+  if (status === "owned") return "Owned";
+  return "Maxed";
+}
+
+function shopRowElement(row: ShopRow): HTMLLIElement {
+  const li = document.createElement("li");
+  li.className = `shop-row is-${row.status}`;
+  const copy = document.createElement("div");
+  copy.className = "shop-row-copy";
+  const title = document.createElement("strong");
+  title.textContent = row.name;
+  const blurb = document.createElement("span");
+  blurb.textContent = row.blurb;
+  copy.append(title, blurb);
+  const buyWrap = document.createElement("div");
+  buyWrap.className = "shop-row-buy";
+  if (row.status === "ready") {
+    const price = document.createElement("span");
+    price.className = "shop-price";
+    price.textContent = row.detail;
+    buyWrap.append(price);
+  } else {
+    const chip = document.createElement("span");
+    chip.className = `shop-chip is-${row.status}`;
+    chip.textContent = shopStatusLabel(row.status);
+    buyWrap.append(chip);
+    if (row.status === "broke") {
+      const miss = document.createElement("span");
+      miss.className = "shop-price is-miss";
+      miss.textContent = row.detail;
+      buyWrap.append(miss);
+    }
+  }
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "shop-buy";
+  btn.textContent = shopStatusLabel(row.status);
+  btn.disabled = row.status !== "ready";
+  btn.addEventListener("click", () => {
+    game.buyShop(row.id);
+    btn.blur();
+    renderHud(game.hud());
+  });
+  buyWrap.append(btn);
+  li.append(copy, buyWrap);
+  return li;
+}
+
 function renderShop(snapshot: HudSnapshot): void {
   shopCreditsEl.textContent = String(snapshot.credits);
   shopHintEl.hidden = snapshot.shopHint.length === 0;
   shopHintEl.textContent = snapshot.shopHint;
   shopListEl.replaceChildren();
-  for (const row of snapshot.shopRows) {
-    const li = document.createElement("li");
-    li.className = "shop-row";
-    const copy = document.createElement("div");
-    copy.className = "shop-row-copy";
-    const title = document.createElement("strong");
-    title.textContent = row.name;
-    const blurb = document.createElement("span");
-    blurb.textContent = row.blurb;
-    copy.append(title, blurb);
-    const buyWrap = document.createElement("div");
-    buyWrap.className = "shop-row-buy";
-    const price = document.createElement("span");
-    price.className = row.status === "broke" ? "shop-price is-miss" : "shop-price";
-    price.textContent = row.detail;
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "shop-buy";
-    btn.textContent = row.status === "ready" ? "Buy" : row.status === "broke" ? "Need CR" : row.status;
-    btn.disabled = row.status !== "ready";
-    btn.addEventListener("click", () => {
-      game.buyShop(row.id);
-      btn.blur();
-      renderHud(game.hud());
-    });
-    buyWrap.append(price, btn);
-    li.append(copy, buyWrap);
-    shopListEl.append(li);
+  for (const section of SHOP_SECTIONS) {
+    const rows = snapshot.shopRows.filter((row) => row.section === section.id);
+    if (rows.length === 0) continue;
+    const block = document.createElement("li");
+    block.className = `shop-section shop-section-${section.id}`;
+    const heading = document.createElement("h2");
+    heading.className = "shop-section-label";
+    heading.textContent = section.label;
+    const list = document.createElement("ul");
+    list.className = "shop-section-rows";
+    for (const row of rows) list.append(shopRowElement(row));
+    block.append(heading, list);
+    shopListEl.append(block);
   }
 }
+
+/** One-shot Hab-7 silhouette. Matches the in-world station strokes, no image asset. */
+function paintShopMark(mark: HTMLCanvasElement): void {
+  const cssW = 640;
+  const cssH = 128;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  mark.width = Math.floor(cssW * dpr);
+  mark.height = Math.floor(cssH * dpr);
+  const g = mark.getContext("2d");
+  if (!g) return;
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.fillStyle = "#000108";
+  g.fillRect(0, 0, cssW, cssH);
+  const cx = cssW * 0.5;
+  const cy = cssH * 0.56;
+  const r = 28;
+  const glow = g.createLinearGradient(0, cy, cssW, cy);
+  glow.addColorStop(0, "rgba(126, 231, 255, 0)");
+  glow.addColorStop(0.5, "rgba(126, 231, 255, 0.35)");
+  glow.addColorStop(1, "rgba(126, 231, 255, 0)");
+  g.strokeStyle = glow;
+  g.lineWidth = 1;
+  g.beginPath();
+  g.moveTo(28, cy);
+  g.lineTo(cssW - 28, cy);
+  g.stroke();
+  g.strokeStyle = "rgba(255, 107, 61, 0.85)";
+  g.lineWidth = 3;
+  g.beginPath();
+  g.moveTo(cx - r - 118, cy);
+  g.lineTo(cx - r * 0.55, cy);
+  g.moveTo(cx + r * 0.55, cy);
+  g.lineTo(cx + r + 118, cy);
+  g.stroke();
+  g.strokeStyle = "#7ee7ff";
+  g.lineWidth = 1.5;
+  for (const x of [cx - r - 96, cx - r - 72, cx + r + 72, cx + r + 96]) {
+    g.beginPath();
+    g.moveTo(x, cy - 10);
+    g.lineTo(x, cy + 10);
+    g.stroke();
+  }
+  g.strokeStyle = "rgba(126, 231, 255, 0.4)";
+  g.lineWidth = 2;
+  g.beginPath();
+  g.arc(cx, cy, r + 12, 0, Math.PI * 2);
+  g.stroke();
+  g.strokeStyle = "#7ee7ff";
+  g.lineWidth = 2.5;
+  g.beginPath();
+  g.arc(cx, cy, r, 0, Math.PI * 2);
+  g.stroke();
+  g.strokeStyle = "#ff7ad9";
+  g.lineWidth = 2;
+  g.strokeRect(cx - r * 0.62, cy - r * 0.34, r * 1.24, r * 0.68);
+  g.fillStyle = "#000108";
+  g.beginPath();
+  g.arc(cx, cy, r * 0.28, 0, Math.PI * 2);
+  g.fill();
+  g.strokeStyle = "#ffe08a";
+  g.lineWidth = 1.5;
+  g.stroke();
+  g.fillStyle = "#ff6b3d";
+  for (const x of [cx - 150, cx - 136, cx + 133, cx + 147]) {
+    g.fillRect(x, cy - 2, 4, 4);
+  }
+}
+
+paintShopMark(shopMarkEl);
 
 function clamp(n: number, a: number, b: number): number {
   return Math.max(a, Math.min(b, n));
