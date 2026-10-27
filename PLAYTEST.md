@@ -73,6 +73,16 @@ The minimap and the `Esc` **CHARTED** panel draw a faint pip for each beacon, in
 
 ---
 
+## Hull breach flash
+
+Lives, rescue, and `E` re-entry are unchanged. A dry tank in a cavern still auto-rescues with no shatter.
+
+- **Die**: ram a rock, a shot, or a cavern wall with fuel left. An orange-cyan shatter ring strokes out from the hull for under half a second, the banner says **HULL BREACH**, and a short thud plays unless `M` is muted.
+- **Last life**: the same shatter, then the game-over sting. No return pop.
+- **Back**: with lives left you respawn where you died in space, or at the cavern shaft spawn. A tight cyan-orange neon ring pops on the hull and a short rising tone plays. Blink-invuln is still about two seconds. WASD, Space, and `E` behave as before.
+
+---
+
 ## Load / Restart (production playtest, 2026-09-10)
 
 Nick: load felt slow and the game “restarts.” Timed against a **production** `vite preview` on `:47331` (not Vite HMR). `npm run build` **green** (`tsc && vite build`, wall ~1.1–1.3s).

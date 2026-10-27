@@ -379,6 +379,17 @@ export function sfxHit(): void {
   beep(156, 0.1, "sine", HIT_GAIN, 52);
 }
 
+/** Hull-breach body. Same mute bus as the other one-shots. */
+export function sfxThud(): void {
+  beep(78, 0.11, "sine", HIT_GAIN * 1.4, 36);
+}
+
+/** Respawn. Short rise so the hull reads as live again. */
+export function sfxBack(): void {
+  beep(330, 0.07, "triangle", HIT_GAIN * 1.15, 660);
+  beep(523, 0.1, "sine", HIT_GAIN, undefined, 0.06);
+}
+
 /** Scrap and sip beacons share one short collect ping. */
 export function sfxBeacon(): void {
   beep(680, 0.085, "triangle", BEACON_GAIN, 1180);
