@@ -59,6 +59,20 @@ Eight seeded blackholes (`mulberry` 4242), kept about 700000 apart and clear of 
 
 ---
 
+## Salvage beacons
+
+Thirty-six seeded landmarks (`mulberry` 918273) on a 6×6 scatter, nudged clear of planets, Hab-7, and void folds. Each is a thin neon ring plus a diamond on `#000108` — orange `#ff6b3d` **SCRAP** or cyan `#7ee7ff` **SIP**. Strokes only, no new particles. The ring is what you see at Mk 5 cruise; the diamond is what you fly through. Once per run, scrap pays **+1 CR**. A sip pays **+2** fuel when the tank has room, and **+1 CR** when it does not. Spent marks stay dim. Map size and the cruise cap are unchanged. The whole set is at most 36 CR.
+
+The minimap and the `Esc` **CHARTED** panel draw a faint pip for each beacon, including on uncharted cells.
+
+### Verify
+
+1. Spot one at cruise: `?playtest=1`, Begin, hold `W`. An orange or cyan arc enters the view before the **SCRAP** or **SIP** diamond. `reentryBeacon(0)` parks a cruise approach. `reentryBeacons()` lists 36.
+2. Collect scrap: fly through the diamond. The floater reads **+1 CR** (scrap, or a sip on a full tank — `?playtest=1` starts full) or **+2 FUEL** when the tank has room. A second pass does not pay.
+3. Chart pip: the corner radar shows faint orange and cyan pips across the field, distinct from planet discs, the **H** diamond, and magenta void rings. `Esc` — **CHARTED** shows the same pips on dark cells.
+
+---
+
 ## Load / Restart (production playtest, 2026-09-10)
 
 Nick: load felt slow and the game “restarts.” Timed against a **production** `vite preview` on `:47331` (not Vite HMR). `npm run build` **green** (`tsc && vite build`, wall ~1.1–1.3s).
