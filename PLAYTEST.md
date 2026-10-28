@@ -11,6 +11,7 @@ Hold `W`/`A`/`D` — tapping thrust does nothing useful. After **Begin re-entry*
 - **6.4M map, Mk 5 ~5 min** (#9) — [Large map](#large-map). Splash, chart, and folds: [Planet splash, chart, void folds](#planet-splash-chart-void-folds).
 - **Hab-7 sections** (#10) — [Checklist — Hab-7 shop visual](#checklist--hab-7-shop-visual).
 - **Combo** (#11) — under the score, clear of the objective pill. Loop check 8.
+- **Combo pop** — same chip. A chained hit scales `xN` and the `pts xN` floater once (cyan flash, then settle). Mute does not change it. Points, the 0.85s window, and the x8 cap stay put.
 - **Upgrade VFX** (#12) — [Checklist — upgrade neon](#checklist--upgrade-neon).
 - **Music bed** (#13) and **mute-aware SFX** (#16) — [Checklist — mute-aware SFX](#checklist--mute-aware-sfx). `M` cuts the bed and the stings.
 - **36 salvage beacons** (#14) — [Salvage beacons](#salvage-beacons) and [Checklist — salvage beacons](#checklist--salvage-beacons).
@@ -301,7 +302,7 @@ Short synth one-shots, no asset files. Shot, hull hit, scrap/sip collect, shop b
    Find the cyan diamond on the minimap (northeast of Cinder). Fly near Hab-7 → HTML prompt `Dock station — E`. `E` or click opens the neon shop overlay. Prices show; broke rows name the missing credits. With `?playtest=1` (80 CR) buy Twin (35) or a tank (30). Esc / Leave returns to space; WASD / Space still work. Station stays in space when you dive.
 
 8. **Soft-lock**  
-   Locked planet always names the missing key. Re-entry is the HTML `#prompt` only — no canvas `{name} · E`. Combo `xN` sits under the score cluster, clear of the objective pill and the mute chip.
+   Locked planet always names the missing key. Re-entry is the HTML `#prompt` only — no canvas `{name} · E`. Combo `xN` sits under the score cluster, clear of the objective pill and the mute chip. A chained hit pops that chip and the floating `pts xN` once (short scale, cyan flash, then settle). `M` leaves the pop on screen. Score math is unchanged.
 
 9. **Empty space / large map**  
    Map is **6400000 × 4800000**. Eight planets: Cinder → Rime → Mycel → Vesper → Ashen → Brine → Thorn → Helix (each needs the previous key). See **Large map** above for the 5-minute cruise and the jitter check.  

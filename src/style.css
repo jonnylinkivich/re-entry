@@ -1056,6 +1056,26 @@ kbd {
   letter-spacing: 0.08em;
   text-shadow: 0 0 18px var(--glow);
   white-space: nowrap;
+  transform-origin: left center;
+}
+
+#combo.is-pop {
+  animation: combo-pop 0.2s ease-out 1 both;
+}
+
+@keyframes combo-pop {
+  0% {
+    transform: scale(1.4);
+    color: #f4fbff;
+  }
+  45% {
+    transform: scale(1.08);
+    color: #7ee7ff;
+  }
+  100% {
+    transform: scale(1);
+    color: #7ee7ff;
+  }
 }
 
 #objective {

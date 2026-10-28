@@ -113,6 +113,7 @@ function renderLives(lives: number, maxLives: number): void {
 }
 
 function renderHud(snapshot: HudSnapshot): void {
+  const scoreUp = lastScore >= 0 && snapshot.score > lastScore;
   if (snapshot.score !== lastScore) {
     lastScore = snapshot.score;
     scoreEl.textContent = String(snapshot.score);
@@ -131,6 +132,8 @@ function renderHud(snapshot: HudSnapshot): void {
   finalLine.textContent = snapshot.finalLine;
   comboEl.hidden = snapshot.mode !== "play" || snapshot.combo < 2;
   comboEl.textContent = `x${snapshot.combo}`;
+  if (comboEl.hidden) comboEl.classList.remove("is-pop");
+  else if (scoreUp && snapshot.combo >= 2) popComboChip();
   renderLoadout(snapshot.loadout);
   renderLives(snapshot.lives, snapshot.maxLives);
   showScreen(snapshot.mode);
@@ -507,10 +510,20 @@ window.addEventListener(
   true,
 );
 
+function popComboChip(): void {
+  comboEl.classList.remove("is-pop");
+  void comboEl.offsetWidth;
+  comboEl.classList.add("is-pop");
+}
+
 promptEl.addEventListener("animationend", (event) => {
   if (event.animationName === "prompt-arrive" || event.animationName === "prompt-arrive-dock") {
     promptEl.classList.remove("is-arrive");
   }
+});
+
+comboEl.addEventListener("animationend", (event) => {
+  if (event.animationName === "combo-pop") comboEl.classList.remove("is-pop");
 });
 
 promptEl.addEventListener("pointerdown", (event) => {
