@@ -321,6 +321,11 @@ const CHART_PLANET_PULSE_MS = 1100;
  * Silent. Stops as soon as that boss is no longer alive on this dive.
  */
 const BOSS_RADAR_PULSE = 0.0038;
+/**
+ * Cavern radar sits above the fuel meters. The flight pads cover the
+ * bottom-left corner, which is where the boss pip would otherwise land.
+ */
+const CAVERN_RADAR_LIFT = 260;
 /** Hull-breach shatter, then the return pop. Screen strokes, not a new particle system. */
 const HULL_FLASH = 0.44;
 const HULL_POP = 0.36;
@@ -3680,26 +3685,26 @@ export class Game {
     const x = cx + cos * t;
     const y = cy + sin * t;
 
-    const breath = telegraph ? this.bossRadarBreath() : 1;
+    const breath = telegraph ? this.bossRadarBreath() : 0;
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(ang);
     if (telegraph) {
       ctx.fillStyle = color;
       ctx.strokeStyle = color;
-      ctx.globalAlpha = 0.12 + breath * 0.2;
+      ctx.globalAlpha = 0.1 + breath * 0.34;
       ctx.beginPath();
-      ctx.moveTo(18 + breath * 4, 0);
-      ctx.lineTo(-12, 12);
-      ctx.lineTo(-12, -12);
+      ctx.moveTo(16 + breath * 12, 0);
+      ctx.lineTo(-14, 12 + breath * 4);
+      ctx.lineTo(-14, -(12 + breath * 4));
       ctx.closePath();
       ctx.fill();
-      ctx.globalAlpha = 0.28 + breath * 0.36;
-      ctx.lineWidth = 1.35;
+      ctx.globalAlpha = 0.26 + breath * 0.48;
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.arc(-2, 0, 8.5 + breath * 2.4, 0, Math.PI * 2);
+      ctx.arc(-1, 0, 7 + breath * 8, 0, Math.PI * 2);
       ctx.stroke();
-      ctx.globalAlpha = 0.72 + breath * 0.28;
+      ctx.globalAlpha = 0.78 + breath * 0.22;
     }
     ctx.fillStyle = color;
     ctx.beginPath();
@@ -3731,29 +3736,29 @@ export class Game {
     return { x: boss.x, y: boss.y, name: boss.def.name, color: accent };
   }
 
-  /** 0.55..1 soft neon breathe. Same clock for the pip and the edge arrow. */
+  /** 0..1 soft neon breathe. Same clock for the pip and the edge arrow. */
   private bossRadarBreath(): number {
-    return 0.55 + 0.45 * Math.sin(performance.now() * BOSS_RADAR_PULSE);
+    return 0.5 + 0.5 * Math.sin(performance.now() * BOSS_RADAR_PULSE);
   }
 
-  /** Corner-radar mark. Halo breathes; the core stays readable. No shadow blur. */
+  /** Corner-radar mark. The halo breathes; the core stays readable. No shadow blur. */
   private drawBossPip(ctx: CanvasRenderingContext2D, px: number, py: number, color: string): void {
-    const breath = this.bossRadarBreath();
+    const t = this.bossRadarBreath();
     ctx.save();
     ctx.fillStyle = color;
     ctx.strokeStyle = color;
-    ctx.globalAlpha = 0.14 + breath * 0.2;
+    ctx.globalAlpha = 0.1 + t * 0.32;
     ctx.beginPath();
-    ctx.arc(px, py, 5.2 + breath * 2.5, 0, Math.PI * 2);
+    ctx.arc(px, py, 4 + t * 6.5, 0, Math.PI * 2);
     ctx.fill();
-    ctx.globalAlpha = 0.42 + breath * 0.4;
-    ctx.lineWidth = 1.2;
+    ctx.globalAlpha = 0.32 + t * 0.5;
+    ctx.lineWidth = 1.35;
     ctx.beginPath();
-    ctx.arc(px, py, 3.5 + breath * 1.15, 0, Math.PI * 2);
+    ctx.arc(px, py, 3 + t * 2.6, 0, Math.PI * 2);
     ctx.stroke();
-    ctx.globalAlpha = 0.82 + breath * 0.18;
+    ctx.globalAlpha = 0.84 + t * 0.16;
     ctx.beginPath();
-    ctx.arc(px, py, 2.3 + breath * 0.45, 0, Math.PI * 2);
+    ctx.arc(px, py, 2.3 + t * 0.7, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
@@ -4360,7 +4365,7 @@ export class Game {
     const mh = 126;
     const pad = 16;
     const x = pad;
-    const y = this.h - mh - pad;
+    const y = Math.max(64, this.h - mh - pad - (this.cavern ? CAVERN_RADAR_LIFT : 0));
     ctx.save();
     ctx.fillStyle = "rgba(6, 8, 14, 0.78)";
     ctx.strokeStyle = "rgba(126, 231, 255, 0.28)";
