@@ -212,6 +212,9 @@ function syncLiveHud(snapshot: HudSnapshot): void {
   }
 }
 
+/** One-shot id. Consumed by the next shop paint so a later HUD pass does not replay it. */
+let shopFlashId: ShopRow["id"] | null = null;
+
 function shopStatusLabel(status: ShopRow["status"]): string {
   if (status === "ready") return "Buy";
   if (status === "broke") return "Broke";
@@ -219,9 +222,15 @@ function shopStatusLabel(status: ShopRow["status"]): string {
   return "Maxed";
 }
 
-function shopRowElement(row: ShopRow): HTMLLIElement {
+/** Weapons and Hull headers are cyan. Engines and Consumables are orange. */
+function shopFlashClass(section: ShopRow["section"]): "is-flash-cyan" | "is-flash-orange" {
+  return section === "engines" || section === "consumables" ? "is-flash-orange" : "is-flash-cyan";
+}
+
+function shopRowElement(row: ShopRow, flash: boolean): HTMLLIElement {
   const li = document.createElement("li");
   li.className = `shop-row is-${row.status}`;
+  if (flash) li.classList.add("is-buy-flash", shopFlashClass(row.section));
   const copy = document.createElement("div");
   copy.className = "shop-row-copy";
   const title = document.createElement("strong");
@@ -254,7 +263,10 @@ function shopRowElement(row: ShopRow): HTMLLIElement {
   btn.textContent = shopStatusLabel(row.status);
   btn.disabled = row.status !== "ready";
   btn.addEventListener("click", () => {
+    const installed = `${row.name} installed`;
     game.buyShop(row.id);
+    // buyShop paints once before this runs. Arm the flash for the paint below.
+    if (game.hud().shopHint === installed) shopFlashId = row.id;
     btn.blur();
     renderHud(game.hud());
   });
@@ -264,6 +276,8 @@ function shopRowElement(row: ShopRow): HTMLLIElement {
 }
 
 function renderShop(snapshot: HudSnapshot): void {
+  const flashId = shopFlashId;
+  shopFlashId = null;
   shopCreditsEl.textContent = String(snapshot.credits);
   shopHintEl.hidden = snapshot.shopHint.length === 0;
   shopHintEl.textContent = snapshot.shopHint;
@@ -278,7 +292,7 @@ function renderShop(snapshot: HudSnapshot): void {
     heading.textContent = section.label;
     const list = document.createElement("ul");
     list.className = "shop-section-rows";
-    for (const row of rows) list.append(shopRowElement(row));
+    for (const row of rows) list.append(shopRowElement(row, row.id === flashId));
     block.append(heading, list);
     shopListEl.append(block);
   }

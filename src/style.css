@@ -536,6 +536,87 @@ body {
   background: linear-gradient(90deg, rgba(255, 107, 61, 0.07), transparent 55%);
 }
 
+/* One buy, one hard accent hit, then the row's own ink. No blur, no glow wash. */
+.shop-row.is-buy-flash {
+  animation: shop-row-flash 0.38s ease-out 1;
+}
+
+.shop-row.is-buy-flash.is-flash-orange {
+  animation-name: shop-row-flash-orange;
+}
+
+.shop-row.is-buy-flash .shop-row-copy strong {
+  animation: shop-name-flash 0.38s ease-out 1;
+}
+
+.shop-row.is-buy-flash.is-flash-orange .shop-row-copy strong {
+  animation-name: shop-name-flash-orange;
+}
+
+.shop-row.is-buy-flash .shop-chip,
+.shop-row.is-buy-flash .shop-price {
+  animation: shop-chip-flash 0.38s ease-out 1;
+}
+
+.shop-row.is-buy-flash.is-flash-orange .shop-chip,
+.shop-row.is-buy-flash.is-flash-orange .shop-price {
+  animation-name: shop-chip-flash-orange;
+}
+
+@keyframes shop-row-flash {
+  0%,
+  28% {
+    border-left-color: #7ee7ff;
+    border-bottom-color: #7ee7ff;
+  }
+  100% {
+    border-bottom-color: rgba(255, 255, 255, 0.1);
+  }
+}
+
+@keyframes shop-row-flash-orange {
+  0%,
+  28% {
+    border-left-color: #ff6b3d;
+    border-bottom-color: #ff6b3d;
+  }
+  100% {
+    border-bottom-color: rgba(255, 255, 255, 0.1);
+  }
+}
+
+@keyframes shop-name-flash {
+  0%,
+  28% {
+    color: #7ee7ff;
+  }
+}
+
+@keyframes shop-name-flash-orange {
+  0%,
+  28% {
+    color: #ff6b3d;
+  }
+}
+
+@keyframes shop-chip-flash {
+  0%,
+  28% {
+    color: #041016;
+    background-color: #7ee7ff;
+    border-color: #7ee7ff;
+  }
+}
+
+@keyframes shop-chip-flash-orange {
+  0%,
+  28% {
+    color: #140804;
+    background-color: #ff6b3d;
+    border-color: #ff6b3d;
+  }
+}
+
 .shop-row-copy {
   min-width: 0;
 }
@@ -897,7 +978,11 @@ kbd {
   }
 
   #fuel-wrap.is-low,
-  #fuel-wrap.is-critical {
+  #fuel-wrap.is-critical,
+  .shop-row.is-buy-flash,
+  .shop-row.is-buy-flash .shop-row-copy strong,
+  .shop-row.is-buy-flash .shop-chip,
+  .shop-row.is-buy-flash .shop-price {
     animation: none;
   }
 

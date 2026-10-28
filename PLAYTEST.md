@@ -24,10 +24,11 @@ Hold `W`/`A`/`D` — tapping thrust does nothing useful. After **Begin re-entry*
 - **Rock silhouettes** (#22) — [Space rocks](#space-rocks).
 - **Pause / chart legend** (#23) — [Pause / chart legend](#pause--chart-legend).
 - **Boss radar** — [Boss radar](#boss-radar). Cavern pip and edge arrow use the planet accent and pulse until the boss dies.
+- **Shop buy flash** — [Checklist — Hab-7 shop visual](#checklist--hab-7-shop-visual). One buy flashes that line once, then it settles.
 
 ## Hab approach
 
-Visual only. Dock reach is still `STATION.radius + 420`. The shop overlay is unchanged. No new sound. The chart already marks Hab with the cyan **H** diamond.
+Visual only. Dock reach is still `STATION.radius + 420`. The shop catalog is unchanged. A buy flashes that line once. No new sound. The chart already marks Hab with the cyan **H** diamond.
 
 - **Approach pulse**: `?playtest=1`, Begin, `reentryHab()`. A faint cyan ring breathes on the Hab-7 silhouette before you reach it (`#7ee7ff`, the shop-header ink). Open arcs, not a **SCRAP** / **SIP** diamond.
 - **Dock**: fly in until `Dock station — E`. `E` still opens the shop. Esc / Leave still undocks. Prices and rows are unchanged.
@@ -244,6 +245,7 @@ Dock with `?playtest=1` (`reentryWarpStation()` then `E`). Same catalog and pric
 - **Owned**: cyan **Owned** chip, buy control disabled (guns you already have, wingman at the pet cap, salvage at 100%).
 - **Maxed**: orange **Maxed** chip (Engines Mk 5, tank or cell at 200, fuel or energy already full).
 - **Broke**: **Broke** chip and the existing `Need N more CR` line in the miss color. A ready row still shows the gold price and a cyan **Buy**.
+- **Buy flash**: one purchase strokes that row once, then it settles. Weapons and Hull use cyan `#7ee7ff`. Engines and Consumables use orange `#ff6b3d`. The price chip (or the new Owned / Maxed chip) takes the same hit. Prices, stock, and upgrade effects stay put. A broke, owned, or maxed click does not flash.
 
 ## Checklist — upgrade neon
 
@@ -299,7 +301,7 @@ Short synth one-shots, no asset files. Shot, hull hit, scrap/sip collect, shop b
    Refresh. Credits, keys, tank, salvage, shop guns/pets, high score, charted cells, and entered planets remain (`reentry-save`, including `visited` and `visitedPlanets`).
 
 8b. **Hab-7 dock**  
-   Find the cyan diamond on the minimap (northeast of Cinder). Fly near Hab-7 → HTML prompt `Dock station — E`. `E` or click opens the neon shop overlay. Prices show; broke rows name the missing credits. With `?playtest=1` (80 CR) buy Twin (35) or a tank (30). Esc / Leave returns to space; WASD / Space still work. Station stays in space when you dive.
+   Find the cyan diamond on the minimap (northeast of Cinder). Fly near Hab-7 → HTML prompt `Dock station — E`. `E` or click opens the neon shop overlay. Prices show; broke rows name the missing credits. With `?playtest=1` (80 CR) buy Twin (35) or a tank (30). That line flashes once in cyan, then settles on Owned or the next tank price. Esc / Leave returns to space; WASD / Space still work. Station stays in space when you dive.
 
 8. **Soft-lock**  
    Locked planet always names the missing key. Re-entry is the HTML `#prompt` only — no canvas `{name} · E`. Combo `xN` sits under the score cluster, clear of the objective pill and the mute chip. A chained hit pops that chip and the floating `pts xN` once (short scale, cyan flash, then settle). `M` leaves the pop on screen. Score math is unchanged.
