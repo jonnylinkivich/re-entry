@@ -66,7 +66,7 @@ Draw-only. Drift, splits, hit circles, and damage stay as they are. Each space r
 
 Draw-only. On a cavern dive the corner pip and the off-screen edge arrow use that world’s accent from `PLANETS` (Cinder `#ff6b3d`, Rime `#9ad8ff`, and the rest of the table). They breathe while the boss on this cavern is alive and stop when it dies. Boss HP, damage, loot, key grants, and the carve are unchanged. No new sound — mute or not, the telegraph is silent.
 
-- **Cinder**: `?playtest=1`, dive Cinder (from space, `reentryFuel(1)` opens the cavern). The lower-right radar pip and the edge arrow toward **Ember Warden** pulse orange until the kill. The arrow hides once the warden is on screen; the pip keeps breathing.
+- **Cinder**: `?playtest=1`, dive Cinder (from space, `reentryFuel(1)` opens the cavern). The cavern radar sits above the fuel meters, clear of the flight pads. Its pip (lower-right chamber) and the edge arrow toward **Ember Warden** pulse orange (`#ff6b3d`) until the kill. The arrow hides once the warden is on screen; the pip keeps breathing.
 
 ---
 
