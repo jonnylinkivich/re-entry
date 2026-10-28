@@ -22,6 +22,7 @@ Hold `W`/`A`/`D` — tapping thrust does nothing useful. After **Begin re-entry*
 - **Low-fuel pulse** (#21) — [Low fuel](#low-fuel). `reentryFuel(0.15)` on `?playtest=1`.
 - **Rock silhouettes** (#22) — [Space rocks](#space-rocks).
 - **Pause / chart legend** (#23) — [Pause / chart legend](#pause--chart-legend).
+- **Boss radar** — [Boss radar](#boss-radar). Cavern pip and edge arrow use the planet accent and pulse until the boss dies.
 
 ## Hab approach
 
@@ -60,6 +61,12 @@ Draw-only. Drift, splits, hit circles, and damage stay as they are. Each space r
 
 - **Pause panel**: `Esc` opens a solid `#000108` plate — cyan edge, orange inset — so **Paused** and Resume read over the field. Resume and `Esc` still return to play.
 - **Legend**: the **CHARTED** key labels orange **SCRAP**, cyan **SIP**, and a violet **VOID-FOLD** ring. Those marks match the pips. The player pip has a faint ring.
+
+## Boss radar
+
+Draw-only. On a cavern dive the corner pip and the off-screen edge arrow use that world’s accent from `PLANETS` (Cinder `#ff6b3d`, Rime `#9ad8ff`, and the rest of the table). They breathe while the boss on this cavern is alive and stop when it dies. Boss HP, damage, loot, key grants, and the carve are unchanged. No new sound — mute or not, the telegraph is silent.
+
+- **Cinder**: `?playtest=1`, dive Cinder (from space, `reentryFuel(1)` opens the cavern). The lower-right radar pip and the edge arrow toward **Ember Warden** pulse orange until the kill. The arrow hides once the warden is on screen; the pip keeps breathing.
 
 ---
 
@@ -273,7 +280,7 @@ Short synth one-shots, no asset files. Shot, hull hit, scrap/sip collect, shop b
    Approach Cinder, `E` (or click). Branded splash (~1.25s, Cinder accent, skip with `E` / `Space` / click), then the 8-bit re-entry cine, then the cavern. Fuel bar appears. Caverns are thrust-only (no down-pull). Hold `Shift`: shield ring, energy drains. Collect **O** ore (cargo HUD ticks up, credits do not bank yet) and **F** fuel / **E** energy.
 
 4. **Boss**  
-   Follow the radar pip / edge marker to **Ember Warden** (lower-right chamber). There is no dashed world-nav line. Shoot until it dies. Banner grants **Cinder Key**; tank chip grows. Re-visiting Cinder must not respawn the boss.
+   Follow the radar pip / edge marker to **Ember Warden** (lower-right chamber). There is no dashed world-nav line. The pip and the off-screen arrow use Cinder’s `#ff6b3d` and pulse until the warden dies ([Boss radar](#boss-radar)). Shoot until it dies. Banner grants **Cinder Key**; tank chip grows. Re-visiting Cinder must not respawn the boss.
 
 5. **Launch vs rescue**  
    - Shaft + `E`: banks **100%** of dive cargo into credits.  
@@ -323,6 +330,7 @@ Recorded against the running Vite server on `:47331` (`?playtest=1`) while the p
 
 - Caverns are thrust-only (no gravity). Fuel is the killer: tanks drain fast, **STRANDED — R RESCUE BEAM (15 CR)** is a strong moment.
 - Ember Warden chamber, radar pip, loot (ore / fuel / weapons), Twin/Shield chips, combo `x3` all showed up in captures. The dashed world-nav stroke is gone.
+- Boss radar: the corner pip and the off-screen arrow take the current `PLANETS` accent and softly pulse while that cavern’s boss is alive. Both stop on the kill. No new SFX.
 - Climb/launch is possible from the entry shaft (`LAUNCH TO SPACE — E (BANK CARGO)`). Hero includes an **OPEN SPACE** return after a shaft `E`. Full “fly the whole shaft on a dry tank” is still easy to fail — rescue is the intended out.
 - `populateCavern` now stores a `diveHolds` snapshot so loot is not restacked every visit (fixed vs original P0).
 
