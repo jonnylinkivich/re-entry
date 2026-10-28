@@ -207,7 +207,15 @@ type Pet = {
   phase: number;
 };
 
-type Floater = { x: number; y: number; text: string; life: number; color: string };
+type Floater = {
+  x: number;
+  y: number;
+  text: string;
+  life: number;
+  color: string;
+  /** Seconds left on the combo accent. Omitted on plain points and pickup labels. */
+  pop?: number;
+};
 type Star = {
   x: number;
   y: number;
@@ -258,6 +266,8 @@ const BULLET_SPEED = 620;
 const BULLET_LIFE = 1.05;
 /** Shield-hit ring pulse. The hull blink from `invuln` stays the hit FX. */
 const SHIELD_PULSE = 0.22;
+/** One scale + cyan flash on a combo floater. The 0.85s window and x8 cap stay put. */
+const COMBO_POP = 0.2;
 /** Owned-gun muzzle stroke. Short enough that rapid fire does not smear. */
 const MUZZLE_FLASH = 0.055;
 const MAX_PETS = 2;
@@ -2766,6 +2776,7 @@ export class Game {
       const f = list[i];
       if (!f) continue;
       f.life -= dt;
+      if (f.pop) f.pop = Math.max(0, f.pop - dt);
       f.y -= 28 * dt;
       if (f.life > 0) list[w++] = f;
     }
@@ -2972,12 +2983,14 @@ export class Game {
       this.meta.high = this.high;
       saveMeta(this.meta);
     }
+    const chained = this.combo > 1;
     this.floaters.push({
       x: rock.x,
       y: rock.y,
-      text: this.combo > 1 ? `${pts} x${this.combo}` : `${pts}`,
+      text: chained ? `${pts} x${this.combo}` : `${pts}`,
       life: 0.7,
       color: "#eef3ff",
+      ...(chained ? { pop: COMBO_POP } : {}),
     });
     this.markHud();
 
@@ -3542,13 +3555,18 @@ export class Game {
   private drawFloater(ctx: CanvasRenderingContext2D, f: Floater): void {
     const sx = this.rx(f.x) * this.zoom;
     const sy = this.ry(f.y) * this.zoom;
+    const t = f.pop ? clamp(f.pop / COMBO_POP, 0, 1) : 0;
+    const scale = 1 + t * t * 0.42;
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.shadowBlur = 0;
     ctx.globalAlpha = clamp(f.life * 1.6, 0, 1);
-    ctx.fillStyle = f.color;
+    ctx.translate(sx, sy);
+    if (scale !== 1) ctx.scale(scale, scale);
+    ctx.fillStyle = t > 0.72 ? "#f4fbff" : t > 0 ? "#7ee7ff" : f.color;
     ctx.font = "700 13px sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText(f.text, sx, sy);
+    ctx.fillText(f.text, 0, 0);
     ctx.restore();
   }
 
