@@ -180,6 +180,15 @@ type HullFlash = {
   kind: "death" | "back";
 };
 
+/** World-space accent ring. One stroke on a paid diamond, then it is gone. */
+type BeaconPop = {
+  x: number;
+  y: number;
+  life: number;
+  max: number;
+  color: string;
+};
+
 type LootKind = "credits" | "ore" | "energy" | "rapid" | "twin" | "spread" | "pet" | "fuel";
 
 type DiveHold = {
@@ -326,6 +335,8 @@ const BEACON_COLLECT_R = 4200;
 const HAB_RING_R = 100_000;
 const BEACON_SCRAP = 1;
 const BEACON_FUEL = 2;
+/** Accent ring when a diamond pays. Stroke only; the ping stays `sfxBeacon`. */
+const BEACON_POP = 0.42;
 /** Lethal only for a *new* wall slam — not grinding the same surface. */
 const WALL_SLAM = 420;
 const RESCUE_FUEL = 24;
@@ -602,6 +613,8 @@ export class Game {
   private diveFlash = 0;
   /** One bit per beacon. Pays once per run; the mark stays up either way. */
   private beaconSpent = new Uint8Array(BEACONS.length);
+  /** Paid-diamond rings. Visual only — mute still gates `sfxBeacon`. */
+  private beaconPops: BeaconPop[] = [];
   private chart = chartFromString("");
   /** Planet ids written to visitedPlanets this run, waiting for the space chart. */
   private chartPulseArmed = new Set<string>();
@@ -800,6 +813,7 @@ export class Game {
     this.foldPop = 0;
     this.diveFlash = 0;
     this.beaconSpent.fill(0);
+    this.beaconPops = [];
     this.chartPulseArmed.clear();
     this.chartPulseAt.clear();
     this.noteVisit();
@@ -963,6 +977,7 @@ export class Game {
     this.foldFlash = Math.max(0, this.foldFlash - t);
     this.foldPop = Math.max(0, this.foldPop - t);
     this.diveFlash = Math.max(0, this.diveFlash - t);
+    this.stepBeaconPops(t);
     if (this.bannerLife > 0) {
       this.bannerLife -= t;
       if (this.bannerLife <= 0) this.banner = "";
@@ -1068,6 +1083,7 @@ export class Game {
       this.boss.draw(ctx, this.zoom, this.renderOx, this.renderOy);
     }
     if (this.mode !== "menu") this.drawShip(ctx);
+    if (!this.cavern) this.drawBeaconPops(ctx);
     for (const floater of this.floaters) {
       if (this.inView(floater.x, floater.y, 40)) this.drawFloater(ctx, floater);
     }
@@ -1367,8 +1383,10 @@ export class Game {
         saveMeta(this.meta);
       }
     }
+    const accent = beacon.kind === "fuel" ? "#7ee7ff" : "#ff6b3d";
     this.floaters.push({ x: beacon.x, y: beacon.y, text: label, life: 0.95, color });
-    this.burst(beacon.x, beacon.y, 4, beacon.kind === "fuel" ? "#7ee7ff" : "#ff6b3d", 90);
+    this.burst(beacon.x, beacon.y, 4, accent, 90);
+    this.pushBeaconPop(beacon.x, beacon.y, accent);
     this.markHud();
   }
 
@@ -3724,6 +3742,51 @@ export class Game {
       }
       ctx.restore();
     }
+  }
+
+  private pushBeaconPop(x: number, y: number, color: string): void {
+    const list = this.beaconPops;
+    if (list.length > 8) list.shift();
+    list.push({ x, y, life: BEACON_POP, max: BEACON_POP, color });
+  }
+
+  private stepBeaconPops(dt: number): void {
+    const list = this.beaconPops;
+    if (list.length === 0) return;
+    let w = 0;
+    for (let i = 0; i < list.length; i++) {
+      const pop = list[i];
+      if (!pop) continue;
+      pop.life -= dt;
+      if (pop.life > 0) list[w++] = pop;
+    }
+    list.length = w;
+  }
+
+  /**
+   * One expanding stroke in the diamond's ink. Screen-sized so cruise zoom
+   * still reads it. No fill and no shadow blur — mute does not hide it.
+   */
+  private drawBeaconPops(ctx: CanvasRenderingContext2D): void {
+    const pops = this.beaconPops;
+    if (pops.length === 0) return;
+    const z = this.zoom;
+    ctx.save();
+    for (const pop of pops) {
+      const t = 1 - clamp(pop.life / pop.max, 0, 1);
+      const grow = 1 - (1 - t) * (1 - t);
+      const fade = 1 - t * t;
+      const core = Math.max(BEACON_CORE_R * z, 10);
+      const screenR = core + 6 + grow * (58 + core * 0.4);
+      if (!this.inView(pop.x, pop.y, (screenR + 12) / z)) continue;
+      ctx.globalAlpha = 0.94 * fade;
+      ctx.strokeStyle = pop.color;
+      ctx.lineWidth = Math.max(1.35, 2.35 * (1 - t * 0.28)) / z;
+      ctx.beginPath();
+      ctx.arc(this.rx(pop.x), this.ry(pop.y), screenR / z, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   private drawHoles(ctx: CanvasRenderingContext2D): void {

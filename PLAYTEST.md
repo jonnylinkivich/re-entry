@@ -125,11 +125,14 @@ Thirty-six seeded landmarks (`mulberry` 918273) on a 6×6 scatter, nudged clear 
 
 The minimap and the `Esc` **CHARTED** panel draw a faint pip for each beacon, including on uncharted cells.
 
+- **Collect pop**: a pay strokes one expanding ring in the diamond's ink — scrap `#ff6b3d`, sip `#7ee7ff` — and plays the existing scrap/sip ping. `M` silences the ping; the ring still draws. Spent marks stay dim. Payouts, the 36 count, chart pips, and the seed are unchanged.
+
 ### Verify
 
 1. Spot one at cruise: `?playtest=1`, Begin, hold `W`. An orange or cyan arc enters the view before the **SCRAP** or **SIP** diamond. `reentryBeacon(0)` parks a cruise approach. `reentryBeacons()` lists 36.
-2. Collect scrap: fly through the diamond. The floater reads **+1 CR** (scrap, or a sip on a full tank — `?playtest=1` starts full) or **+2 FUEL** when the tank has room. A second pass does not pay.
+2. Collect scrap: fly through the diamond. The floater reads **+1 CR** (scrap, or a sip on a full tank — `?playtest=1` starts full) or **+2 FUEL** when the tank has room. One accent ring expands in that color, then it is gone. A second pass does not pay and the mark stays dim.
 3. Chart pip: the corner radar shows faint orange and cyan squares across the field, distinct from planet discs, the **H** diamond, and the violet void-fold rings. `Esc` — **CHARTED** shows the same squares on dark cells.
+4. Mute: `M`, then fly through another diamond. The ring still pops. The ping does not.
 
 ---
 
@@ -245,6 +248,7 @@ Visual only. Same shop rows, prices, and speeds. Own the gear at Hab-7 (or pick 
 ## Checklist — salvage beacons
 
 - **Field marks**: thirty-six seeded **SCRAP** / **SIP** rings (see **Salvage beacons**). One pass pays; the chart keeps a faint pip.
+- **Collect pop**: one accent ring on pay (scrap orange, sip cyan). Mute cuts the ping; the ring stays. Spent marks stay dim.
 
 ## Checklist — void-fold telegraph
 
