@@ -334,7 +334,7 @@ Recorded against the running Vite server on `:47331` (`?playtest=1`) while the p
 
 - Caverns are thrust-only (no gravity). Fuel is the killer: tanks drain fast, **STRANDED — R RESCUE BEAM (15 CR)** is a strong moment.
 - Ember Warden chamber, radar pip, loot (ore / fuel / weapons), Twin/Shield chips, combo `x3` all showed up in captures. The dashed world-nav stroke is gone.
-- Boss radar: the corner pip and the off-screen arrow take the current `PLANETS` accent and softly pulse while that cavern’s boss is alive. Both stop on the kill. No new SFX.
+- Boss radar: the cavern pip (above the fuel meters, clear of the flight pads) and the off-screen arrow take the current `PLANETS` accent and softly pulse while that cavern’s boss is alive. Both stop on the kill. No new SFX.
 - Climb/launch is possible from the entry shaft (`LAUNCH TO SPACE — E (BANK CARGO)`). Hero includes an **OPEN SPACE** return after a shaft `E`. Full “fly the whole shaft on a dry tank” is still easy to fail — rescue is the intended out.
 - `populateCavern` now stores a `diveHolds` snapshot so loot is not restacked every visit (fixed vs original P0).
 
