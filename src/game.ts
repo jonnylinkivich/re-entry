@@ -312,6 +312,11 @@ const CHART_PLANET_PULSE_MS = 1100;
  * Silent. Stops as soon as that boss is no longer alive on this dive.
  */
 const BOSS_RADAR_PULSE = 0.0038;
+/**
+ * Cavern radar sits above the fuel meters. The flight pads cover the
+ * bottom-left corner, which is where the boss pip would otherwise land.
+ */
+const CAVERN_RADAR_LIFT = 260;
 /** Hull-breach shatter, then the return pop. Screen strokes, not a new particle system. */
 const HULL_FLASH = 0.44;
 const HULL_POP = 0.36;
@@ -4297,7 +4302,7 @@ export class Game {
     const mh = 126;
     const pad = 16;
     const x = pad;
-    const y = this.h - mh - pad;
+    const y = Math.max(64, this.h - mh - pad - (this.cavern ? CAVERN_RADAR_LIFT : 0));
     ctx.save();
     ctx.fillStyle = "rgba(6, 8, 14, 0.78)";
     ctx.strokeStyle = "rgba(126, 231, 255, 0.28)";
