@@ -307,6 +307,11 @@ const DIVE_FLASH = 0.36;
  * Silent. The clock starts when the chart is on screen, so a cavern dive does not burn it.
  */
 const CHART_PLANET_PULSE_MS = 1100;
+/**
+ * Soft breathe on the cavern boss pip and edge arrow. ~1.65s.
+ * Silent. Stops as soon as that boss is no longer alive on this dive.
+ */
+const BOSS_RADAR_PULSE = 0.0038;
 /** Hull-breach shatter, then the return pop. Screen strokes, not a new particle system. */
 const HULL_FLASH = 0.44;
 const HULL_POP = 0.36;
@@ -3564,8 +3569,9 @@ export class Game {
 
   private drawNavMarker(ctx: CanvasRenderingContext2D): void {
     if (this.mode === "menu" || this.mode === "over") return;
-    if (this.zone === "cavern" && this.boss?.alive) {
-      this.drawEdgeMarker(ctx, this.boss.x, this.boss.y, this.boss.def.color, this.boss.def.name);
+    if (this.zone === "cavern") {
+      const mark = this.bossTelegraph();
+      if (mark) this.drawEdgeMarker(ctx, mark.x, mark.y, mark.color, mark.name, true);
       return;
     }
     if (this.zone !== "space") return;
@@ -3636,6 +3642,7 @@ export class Game {
     wy: number,
     color: string,
     label: string,
+    telegraph = false,
   ): void {
     const sx = (wx - this.camX) * this.zoom;
     const sy = (wy - this.camY) * this.zoom;
@@ -3655,9 +3662,27 @@ export class Game {
     const x = cx + cos * t;
     const y = cy + sin * t;
 
+    const breath = telegraph ? this.bossRadarBreath() : 1;
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(ang);
+    if (telegraph) {
+      ctx.fillStyle = color;
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = 0.12 + breath * 0.2;
+      ctx.beginPath();
+      ctx.moveTo(18 + breath * 4, 0);
+      ctx.lineTo(-12, 12);
+      ctx.lineTo(-12, -12);
+      ctx.closePath();
+      ctx.fill();
+      ctx.globalAlpha = 0.28 + breath * 0.36;
+      ctx.lineWidth = 1.35;
+      ctx.beginPath();
+      ctx.arc(-2, 0, 8.5 + breath * 2.4, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 0.72 + breath * 0.28;
+    }
     ctx.fillStyle = color;
     ctx.beginPath();
     ctx.moveTo(14, 0);
@@ -3672,6 +3697,47 @@ export class Game {
     ctx.textBaseline = "top";
     const labelY = y > this.h - 90 ? y - 28 : y + 16;
     ctx.fillText(label, x, labelY);
+  }
+
+  /**
+   * Living boss on this cavern. Color is that world's `PLANETS` accent
+   * (Cinder `#ff6b3d`), not the boss sprite paint. Null once the boss is down.
+   */
+  private bossTelegraph(): { x: number; y: number; name: string; color: string } | null {
+    const boss = this.boss;
+    const planet = this.planet;
+    if (this.zone !== "cavern" || !boss?.alive || !planet) return null;
+    if (boss.def.planetId !== planet.id) return null;
+    const accent = PLANETS.find((entry) => entry.id === planet.id)?.color;
+    if (!accent) return null;
+    return { x: boss.x, y: boss.y, name: boss.def.name, color: accent };
+  }
+
+  /** 0.55..1 soft neon breathe. Same clock for the pip and the edge arrow. */
+  private bossRadarBreath(): number {
+    return 0.55 + 0.45 * Math.sin(performance.now() * BOSS_RADAR_PULSE);
+  }
+
+  /** Corner-radar mark. Halo breathes; the core stays readable. No shadow blur. */
+  private drawBossPip(ctx: CanvasRenderingContext2D, px: number, py: number, color: string): void {
+    const breath = this.bossRadarBreath();
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = 0.14 + breath * 0.2;
+    ctx.beginPath();
+    ctx.arc(px, py, 5.2 + breath * 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 0.42 + breath * 0.4;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(px, py, 3.5 + breath * 1.15, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 0.82 + breath * 0.18;
+    ctx.beginPath();
+    ctx.arc(px, py, 2.3 + breath * 0.45, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 
   private drawBeacons(ctx: CanvasRenderingContext2D): void {
@@ -4247,12 +4313,8 @@ export class Game {
       ctx.strokeRect(x + this.camX * sx, y + this.camY * sy, this.viewW() * sx, this.viewH() * sy);
       ctx.fillStyle = "#7ee7ff";
       ctx.fillRect(x + this.ship.x * sx - 2, y + this.ship.y * sy - 2, 4, 4);
-      if (this.boss?.alive) {
-        ctx.fillStyle = this.boss.def.color;
-        ctx.beginPath();
-        ctx.arc(x + this.boss.x * sx, y + this.boss.y * sy, 4, 0, Math.PI * 2);
-        ctx.fill();
-      }
+      const mark = this.bossTelegraph();
+      if (mark) this.drawBossPip(ctx, x + mark.x * sx, y + mark.y * sy, mark.color);
     } else {
       this.paintSpaceChart(ctx, x, y, mw, mh, false);
     }
