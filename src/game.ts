@@ -302,6 +302,11 @@ const FOLD_FLASH = 0.28;
 const FOLD_POP = 0.5;
 /** Rim + streak when the cine hands off into the shaft. Visual only. */
 const DIVE_FLASH = 0.36;
+/**
+ * One-shot accent ring on the space chart the first time this run records a planet.
+ * Silent. The clock starts when the chart is on screen, so a cavern dive does not burn it.
+ */
+const CHART_PLANET_PULSE_MS = 1100;
 /** Hull-breach shatter, then the return pop. Screen strokes, not a new particle system. */
 const HULL_FLASH = 0.44;
 const HULL_POP = 0.36;
@@ -598,6 +603,10 @@ export class Game {
   /** One bit per beacon. Pays once per run; the mark stays up either way. */
   private beaconSpent = new Uint8Array(BEACONS.length);
   private chart = chartFromString("");
+  /** Planet ids written to visitedPlanets this run, waiting for the space chart. */
+  private chartPulseArmed = new Set<string>();
+  /** performance.now() when that planet's chart ring started. */
+  private chartPulseAt = new Map<string, number>();
   private startAt = -1e9;
 
   constructor() {
@@ -791,6 +800,8 @@ export class Game {
     this.foldPop = 0;
     this.diveFlash = 0;
     this.beaconSpent.fill(0);
+    this.chartPulseArmed.clear();
+    this.chartPulseAt.clear();
     this.noteVisit();
     this.applyMetaLoadout();
     this.rocks = [];
@@ -1315,6 +1326,7 @@ export class Game {
     if (this.meta.visitedPlanets.includes(id)) return;
     this.meta.visitedPlanets = [...this.meta.visitedPlanets, id];
     saveMeta(this.meta);
+    this.chartPulseArmed.add(id);
   }
 
   /** Fly-through on the pre-fold segment so a void jump cannot sweep the field. */
@@ -4048,6 +4060,57 @@ export class Game {
     ctx.restore();
   }
 
+  /**
+   * Filled accent disc from `PLANETS.color`. Unvisited stays dim.
+   * The first record this run adds one expanding stroke in that same accent.
+   * No shadow blur — a thin ring that fades, then it is gone.
+   */
+  private drawChartPlanet(
+    ctx: CanvasRenderingContext2D,
+    planet: PlanetDef,
+    px: number,
+    py: number,
+    disc: number,
+    labeled: boolean,
+    now: number,
+  ): void {
+    const seen = this.meta.visitedPlanets.includes(planet.id);
+    ctx.globalAlpha = seen ? 1 : 0.5;
+    ctx.fillStyle = planet.color;
+    ctx.strokeStyle = planet.color;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(px, py, disc, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    const t = this.chartPlanetPulseT(planet.id, now);
+    if (t < 0) return;
+    const grow = 1 - (1 - t) * (1 - t);
+    const fade = (1 - t) * (1 - t);
+    ctx.globalAlpha = 0.9 * fade;
+    ctx.lineWidth = (labeled ? 1.55 : 1.2) * (1 - t * 0.35);
+    ctx.beginPath();
+    ctx.arc(px, py, disc + 1.15 + grow * (labeled ? 4.4 : 2.8), 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  /** 0..1 while the one-shot ring is live, or -1. Clock starts on the first chart paint. */
+  private chartPlanetPulseT(id: string, now: number): number {
+    let start = this.chartPulseAt.get(id);
+    if (start == null) {
+      if (!this.chartPulseArmed.has(id)) return -1;
+      start = now;
+      this.chartPulseAt.set(id, start);
+      this.chartPulseArmed.delete(id);
+    }
+    const t = (now - start) / CHART_PLANET_PULSE_MS;
+    if (t >= 1) {
+      this.chartPulseAt.delete(id);
+      return -1;
+    }
+    return t > 0 ? t : 0;
+  }
+
   /** Visited cells lit, the rest of the panel left dark. Landmarks stay on top of the fog. */
   private paintSpaceChart(
     ctx: CanvasRenderingContext2D,
@@ -4076,13 +4139,17 @@ export class Game {
       ctx.fillRect(x + beacon.x * sx - pip * 0.5, y + beacon.y * sy - pip * 0.5, pip, pip);
     }
     ctx.globalAlpha = 1;
+    const chartNow = performance.now();
     for (const planet of PLANETS) {
-      const seen = this.meta.visitedPlanets.includes(planet.id);
-      ctx.globalAlpha = seen ? 1 : 0.5;
-      ctx.fillStyle = planet.color;
-      ctx.beginPath();
-      ctx.arc(x + planet.x * sx, y + planet.y * sy, labeled ? 5 : 4, 0, Math.PI * 2);
-      ctx.fill();
+      this.drawChartPlanet(
+        ctx,
+        planet,
+        x + planet.x * sx,
+        y + planet.y * sy,
+        labeled ? 5 : 4,
+        labeled,
+        chartNow,
+      );
     }
     ctx.globalAlpha = 1;
     for (const hole of HOLES) {
